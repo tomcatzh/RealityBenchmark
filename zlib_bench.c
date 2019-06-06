@@ -9,7 +9,9 @@
 #include "misc.h"
 
 CONTENTS *deflate_content(const CONTENTS *data, const int level) {
-  assert(data != NULL && data->body != NULL && data->size > 0);
+  assert(data != NULL);
+  assert(data->body != NULL);
+  assert(data->size > 0);
 
   int ret;
   size_t bufSize = 0;
@@ -37,22 +39,24 @@ CONTENTS *deflate_content(const CONTENTS *data, const int level) {
   strm->avail_in = data->size;
   strm->next_in = data->body;
 
-  while (strm->avail_out == 0) {
-    unsigned char *ptr =
+  do {
+    if (strm->avail_out == 0) {
+      unsigned char *ptr =
         (unsigned char *)realloc(result->body, bufSize + data->size);
-    if (ptr == NULL) {
-      errno = ENOMEM;
-      goto ERROR_END;
+      if (ptr == NULL) {
+        errno = ENOMEM;
+        goto ERROR_END;
+      }
+
+      result->body = ptr;
+      strm->next_out = ptr + bufSize;
+      strm->avail_out = data->size;
+      bufSize += data->size;
     }
-
-    result->body = ptr;
-    strm->next_out = ptr + bufSize;
-    strm->avail_out = data->size;
-    bufSize += data->size;
-
+    
     ret = deflate(strm, Z_FINISH);
     assert(ret != Z_STREAM_ERROR);
-  }
+  } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
   goto END;
@@ -84,7 +88,9 @@ CONTENTS *deflate_content_default_compression(const CONTENTS *plain) {
 }
 
 CONTENTS *inflate_content(const CONTENTS *data) {
-  assert(data != NULL && data->body != NULL && data->size > 0);
+  assert(data != NULL);
+  assert(data->body != NULL);
+  assert(data->size > 0);
 
   int ret;
   size_t bufSize = 0;
@@ -112,22 +118,24 @@ CONTENTS *inflate_content(const CONTENTS *data) {
   strm->avail_in = data->size;
   strm->next_in = data->body;
 
-  while (strm->avail_out == 0) {
-    unsigned char *ptr =
-        (unsigned char *)realloc(result->body, bufSize + data->size * 5);
-    if (ptr == NULL) {
-      errno = ENOMEM;
-      goto ERROR_END;
-    }
+   do {
+    if (strm->avail_out == 0) {
+      unsigned char *ptr =
+          (unsigned char *)realloc(result->body, bufSize + data->size * 5);
+      if (ptr == NULL) {
+        errno = ENOMEM;
+        goto ERROR_END;
+      }
 
-    result->body = ptr;
-    strm->next_out = ptr + bufSize;
-    strm->avail_out = data->size * 5;
-    bufSize += data->size * 5;
+      result->body = ptr;
+      strm->next_out = ptr + bufSize;
+      strm->avail_out = data->size * 5;
+      bufSize += data->size * 5;
+    }
 
     ret = inflate(strm, Z_FINISH);
     assert(ret != Z_STREAM_ERROR);
-  }
+  } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
   goto END;
