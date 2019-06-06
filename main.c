@@ -9,7 +9,7 @@
 #include "zlib_bench.h"
 #include "misc.h"
 
-static const char *ratio(int numerator, int denominator, char *buf,
+static const char *ratio(long numerator, long denominator, char *buf,
                          size_t bufSize) {
   snprintf(buf, bufSize, "%.2lf%%",
            ((double)numerator / (double)denominator) * 100);
