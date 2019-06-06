@@ -125,7 +125,7 @@ static int resultMultiDecompress(RESULT* results, unsigned int threads) {
 		           "\t\tPreThread: %.4f Ops/s, Input: %s/s, Output: %s/s\n",
 		           totalLoops, totalLoops / usec * 1000000, totalInputStr, secondInput,
 		           totalOutputStr, secondOutput,
-		           totalLoops / (float)threads, preThreadSecondInput, preThreadSecondOutput);
+		           totalLoops / usec / (float)threads * 1000000, preThreadSecondInput, preThreadSecondOutput);
 
 	return 0;
 }
