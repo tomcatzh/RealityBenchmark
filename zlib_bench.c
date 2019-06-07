@@ -2,11 +2,12 @@
 #include <errno.h>
 #include <assert.h>
 #include <zlib.h>
-#include <pthread.h>
 
 #include "contents.h"
-#include "zlib_bench.h"
+#include "benchmark.h"
 #include "misc.h"
+
+#include "zlib_bench.h"
 
 CONTENTS *deflate_content(const CONTENTS *data, const int level) {
   assert(data != NULL);
@@ -154,107 +155,3 @@ END:
   return result;
 }
 
-int loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-             const struct timeval *timeout, RESULT* result) {
-	assert(run != NULL && contents != NULL && contents->body != NULL && 
-				contents->size > 0 && result != NULL);
-
-	int ret = 1;
-
-  CONTENTS *r = NULL;
-
-  struct timeval start, loop, now, interval;
-
-	memset (result, 0, sizeof(RESULT));
-
-  gettimeofday(&start, NULL);
-
-  do {
-    gettimeofday(&loop, NULL);
-    r = (*run)(contents);
-    gettimeofday(&now, NULL);
-
-    if (!r) {
-      goto END;
-    }
-    result->loops++;
-    result->input_bytes += contents->size;
-    result->output_bytes += r->size;
-    destroy_contents(r);
-
-    timeval_subtract(&interval, &now, &loop);
-    timeval_add(&(result->real_run), &interval, &(result->real_run));
-  } while (timeval_before_timeout(timeout, &now, &start));
-
-  ret = 0;
-
-END:
-  return ret;
-}
-
-struct thread_data {
-	RESULT *result;
-	const struct timeval *timeout;
-	CONTENTS *(*run)(const CONTENTS *);
-	const CONTENTS *contents;
-};
-
-static void *loopThread(void *arg) {
-	struct thread_data *data = (struct thread_data *)arg;
-
-	int ret = loop(data->run, data->contents, data->timeout, data->result);
-
-	return (void*)(intptr_t)ret;
-}
-
-int thread_loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-										const struct timeval *timeout, const unsigned int threads,
-										RESULT* results) {
-	assert(run != NULL && contents != NULL && contents->body != NULL && 
-				contents->size > 0 && threads > 0);
-	pthread_t *pids = NULL;
-	struct thread_data* data = NULL;
-	int ret = 1;
-
-	pids = malloc(sizeof(pthread_t) * threads);
-	if (!pids) {
-		errno = ENOMEM;
-		goto END;
-	}
-
-	data = malloc(sizeof(struct thread_data) * threads);
-	if (!data) {
-		errno = ENOMEM;
-		goto END;
-	}
-
-	for (int i = 0; i < threads; i++) {
-		data[i].result = results + i;
-		data[i].timeout = timeout;
-		data[i].run = run;
-		data[i].contents = contents;
-		pthread_create(pids+i, NULL, loopThread, (void *)(data+i));
-	}
-
-	for (int i = 0; i < threads; i++) {
-		void* threadRet = NULL;
-		pthread_join(pids[i], threadRet);
-
-		if ((intptr_t)threadRet) {
-			goto END;
-		}
-	}
-
-	ret = 0;
-
-END:
-	if (pids) {
-		free(pids);
-		pids = NULL;
-	}
-	if (data) {
-		free(data);
-		data = NULL;
-	}
-	return ret;
-}

@@ -8,6 +8,7 @@
 #include "contents.h"
 #include "zlib_bench.h"
 #include "misc.h"
+#include "benchmark.h"
 
 static const char *ratio(long numerator, long denominator, char *buf,
                          size_t bufSize) {
@@ -50,10 +51,11 @@ static int resultSingleDecompress(RESULT *r) {
   humanSize((unsigned long)(r->output_bytes / usec * 1000000), secondOutput,
             sizeof(secondOutput));
 
-  return printf( "\tTotal Ops: %lu (%.4f Ops/s), Total Input: %s (%s/s), Total Output: "
-		           "%s (%s/s)\n",
+  return printf( "\tTotal Ops: %lu (%.2f Ops/s), Total Input: %s (%s/s), Total Output: "
+		           "%s (%s/s)\n"
+               "\t\tAvg Loop: %luus, Standard Deviation: %.2lf\n",
 		           r->loops, r->loops / usec * 1000000, totalInput, secondInput,
-		           totalOutput, secondOutput);
+		           totalOutput, secondOutput, to_usec(&(r->real_run)) / r->loops, r->sd);
 }
 
 
@@ -77,6 +79,7 @@ static int resultMultiDecompress(RESULT* results, unsigned int threads) {
 	unsigned long totalInput = 0;
 	unsigned long totalOutput = 0;
 	unsigned long totalLoops = 0;
+  double maxSD = 0;
 
 	for (int i = 0; i < threads; i ++) {
 		RESULT *r = results + i;
@@ -88,6 +91,10 @@ static int resultMultiDecompress(RESULT* results, unsigned int threads) {
 		} else {
 			maxRun = &(r->real_run);
 		}
+
+    if (r->sd > maxSD) {
+      maxSD = r->sd;
+    }
 
 		timeval_addadd(&totalRun, &(r->real_run));
 
@@ -122,10 +129,13 @@ static int resultMultiDecompress(RESULT* results, unsigned int threads) {
 
   return printf( "\tTotal Ops: %lu (%.4f Ops/s), Total Input: %s (%s/s), Total Output: "
 		           "%s (%s/s)\n"
-		           "\t\tPreThread: %.4f Ops/s, Input: %s/s, Output: %s/s\n",
+		           "\t\tPreThread: %.2f Ops/s, Input: %s/s, Output: %s/s\n"
+               "\t\tAvg Loop: %luus, Max Thread Standard Deviation: %.2lf\n",
 		           totalLoops, totalLoops / usec * 1000000, totalInputStr, secondInput,
 		           totalOutputStr, secondOutput,
-		           totalLoops / usec / (float)threads * 1000000, preThreadSecondInput, preThreadSecondOutput);
+		           totalLoops / usec / (float)threads * 1000000,
+               preThreadSecondInput, preThreadSecondOutput,
+               to_usec(&totalRun) / totalLoops, maxSD);
 
 	return 0;
 }

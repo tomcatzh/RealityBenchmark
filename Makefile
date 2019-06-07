@@ -2,8 +2,8 @@ CC=gcc
 CFLAGS=-I. -Wall -g
 DEPS = contents.h zlib_bench.h
 TARGET = zlib_bench
-LIBS = -lcurl -lz -pthread
-OBJS = contents.o main.o zlib_bench.o misc.o
+LIBS = -lcurl -lz -pthread -lm
+OBJS = contents.o main.o zlib_bench.o misc.o benchmark.o
 
 %.o: %.c $(DEPS)
 	$(CC) -c -o $@ $< $(CFLAGS)

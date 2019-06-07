@@ -13,4 +13,6 @@ int timeval_before(const struct timeval *x, const struct timeval *y);
 int timeval_before_timeout(const struct timeval *timeout,
                           const struct timeval *x, const struct timeval *y);
 
+unsigned long to_usec(struct timeval *x);
+
 #endif

@@ -2,6 +2,10 @@
 
 #include "misc.h"
 
+unsigned long to_usec(struct timeval *x) {
+  return x->tv_sec * 1000000 + x->tv_usec;
+}
+
 void timeval_add(struct timeval *result, const struct timeval *x,
                 const struct timeval *y) {
     result->tv_sec = x->tv_sec + y->tv_sec;
