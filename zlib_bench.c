@@ -147,7 +147,7 @@ ERROR_END:
   }
 END:
   if (strm) {
-    (void)deflateEnd(strm);
+    (void)inflateEnd(strm);
     free(strm);
     strm = NULL;
   }
