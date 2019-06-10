@@ -318,14 +318,17 @@ int main(int argc, char **argv) {
 END:
   if (inflatedContent) {
     destroy_contents(inflatedContent);
+    free(inflatedContent);
     inflatedContent = NULL;
   }
   if (deflatedContent) {
     destroy_contents(deflatedContent);
+    free(deflatedContent);
     deflatedContent = NULL;
   }
   if (contents) {
     destroy_contents(contents);
+    free(contents);
     contents = NULL;
   }
   if (results) {

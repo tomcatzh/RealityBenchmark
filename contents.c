@@ -90,6 +90,5 @@ void destroy_contents(CONTENTS *file) {
     if (file->body != NULL) {
       free(file->body);
     }
-    free(file);
   }
 }
