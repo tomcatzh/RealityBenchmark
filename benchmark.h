@@ -30,16 +30,26 @@ typedef struct b_result RESULT;
 
 void resultDestory(RESULT* r);
 
-unsigned long resultThreadLoops(RESULT* r, unsigned int thread,
-                            int successOnly, int testedOnly);
+unsigned long resultThreadLoops(RESULT* r, unsigned int thread);
+unsigned long resultAvgLoop(RESULT* r);
+double resultStdevLoop(RESULT* results);
+
 int isResultSuccess(RESULT* r);
 int isResultFixed(RESULT* r);
 int isResultCorrect(RESULT* r);
+
 unsigned long resultRealTime(RESULT* r, struct timeval *totalTime);
 unsigned long resultRealTimeByRun(RESULT* r, unsigned int run,
                                   struct timeval *totalTime);
+unsigned long resultAvgInterval(RESULT* r);
+double resultStdevInterval(RESULT* r);
+unsigned long resultAvgIntervalByRun(RESULT* r, unsigned int run);
+double resultStdevIntervalByRun(RESULT* r, unsigned int run);
+
 size_t resultTotalInputByRun(RESULT *r, unsigned int run);
 size_t resultTotalOutputByRun(RESULT *r, unsigned int run);
+size_t resultSampleInputByRun(RESULT *r, unsigned int run);
+size_t resultSampleOutputByRun(RESULT *r, unsigned int run);
 
 struct b_test {
   struct timeval timeout;

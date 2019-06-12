@@ -10,13 +10,6 @@
 #include "misc.h"
 #include "benchmark.h"
 
-static const char *ratio(long numerator, long denominator, char *buf,
-                         size_t bufSize) {
-  snprintf(buf, bufSize, "%.2lf%%",
-           ((double)numerator / (double)denominator) * 100);
-  return buf;
-}
-
 static void printUsage() {
 	fprintf(stderr,
 	        "Usage: zlib_bench [-r <seconds, default is 3>] "
@@ -26,9 +19,6 @@ static void printUsage() {
 int main(int argc, char **argv) {
   int ret = -1;
   CONTENTS *contents = NULL;
-  CONTENTS *deflatedContent = NULL;
-  CONTENTS *inflatedContent = NULL;
-  char buf[1024];
 
   struct timeval timeout;
   timeout.tv_sec = 0;
@@ -79,30 +69,6 @@ int main(int argc, char **argv) {
     goto END;
   }
 
-  deflatedContent = deflateContentBestCompression(contents);
-  if (deflatedContent == NULL) {
-    fprintf(stderr, "Error compress data.\n");
-    goto END;
-  }
-
-  inflatedContent = inflateContent(deflatedContent);
-  if (inflatedContent == NULL) {
-    fprintf(stderr, "Error decompress data.\n");
-    goto END;
-  }
-
-  if (contents->size != inflatedContent->size ||
-      memcmp(contents->body, inflatedContent->body, contents->size) != 0) {
-    fprintf(stderr, "Decompressed content not match!\n");
-    goto END;
-  }
-
-  printf(
-      "Got %lu bytes content, compressed best to %lu bytes (%s), decompressed "
-      "success.\n",
-      contents->size, deflatedContent->size,
-      ratio(deflatedContent->size, contents->size, buf, sizeof(buf)));
-
   TEST *t = testNew();
   testSetThreads(t, 2);
   testSetTimeout(t, &timeout);
@@ -120,25 +86,21 @@ int main(int argc, char **argv) {
   printf("%lu\n", resultRealTimeByRun(r, 0, NULL));
   printf("%lu\n", resultRealTimeByRun(r, 1, NULL));
   printf("%lu %lu\n", resultTotalInputByRun(r, 0), resultTotalOutputByRun(r, 1));
+  printf("%lu %lu\n", resultSampleInputByRun(r, 0), resultSampleOutputByRun(r, 0));
+  printf("%lu %lu\n", resultSampleInputByRun(r, 1), resultSampleOutputByRun(r, 1));
 
-  printf("%lu\n", resultThreadLoops(r, 0, 1, 1));
-  printf("%lu\n", resultThreadLoops(r, 1, 1, 1));
+  printf("%lu\n", resultThreadLoops(r, 0));
+  printf("%lu\n", resultThreadLoops(r, 1));
+  printf("%lu %.4lf\n", resultAvgLoop(r), resultStdevLoop(r));
+  printf("%lu %.4lf\n", resultAvgInterval(r), resultStdevInterval(r));
+  printf("%lu %.4lf\n", resultAvgIntervalByRun(r, 0), resultStdevIntervalByRun(r, 0));
+  printf("%lu %.4lf\n", resultAvgIntervalByRun(r, 1), resultStdevIntervalByRun(r, 1));
 
   resultDestory(r);
   
   ret = 0;
 
 END:
-  if (inflatedContent) {
-    destroyContents(inflatedContent);
-    free(inflatedContent);
-    inflatedContent = NULL;
-  }
-  if (deflatedContent) {
-    destroyContents(deflatedContent);
-    free(deflatedContent);
-    deflatedContent = NULL;
-  }
   if (contents) {
     destroyContents(contents);
     free(contents);
