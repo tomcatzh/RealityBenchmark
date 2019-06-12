@@ -1,145 +1,514 @@
 #include <stdlib.h>
 #include <assert.h>
-#include <errno.h>
 #include <pthread.h>
-#include <unistd.h>
+#include <stdio.h>
 #include <math.h>
 
-#include "contents.h"
 #include "misc.h"
+#include "contents.h"
 
 #include "benchmark.h"
 
-int loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-             const struct timeval *timeout, RESULT* result) {
-  assert(run != NULL && contents != NULL && contents->body != NULL && 
-        contents->size > 0 && result != NULL);
+TEST *testNew() {
+  TEST* t = (TEST *)calloc(1, sizeof(TEST));
+  assert(t);
 
-  int ret = 1;
+  return t;
+}
 
-  CONTENTS *r = NULL;
+void testSetTimeout(TEST *t, struct timeval* timeout) {
+  t->timeout.tv_sec = timeout->tv_sec;
+  t->timeout.tv_usec = timeout->tv_usec;
+}
 
-  struct timeval start, loop, now, interval;
+void testSetThreads(TEST *t, unsigned int threads) {
+  t->threads = threads;
+}
 
-  unsigned long *usecBuf = NULL;
-  size_t usecBufSize = 0;
+void testAddRun(TEST *t, CONTENTS* (*run)(const CONTENTS*)) {
+  t->run = realloc(t->run, sizeof(run) * (t->runCount + 1));
+  assert(t->run);
 
-  memset (result, 0, sizeof(RESULT));
+  t->run[t->runCount] = run;
+  t->runCount ++;
+}
 
-  gettimeofday(&start, NULL);
+void testSetTesting(TEST *t, const CONTENTS* data) {
+  t->verifyData = data;
+}
 
-  do {
-    gettimeofday(&loop, NULL);
-    r = (*run)(contents);
-    gettimeofday(&now, NULL);
+void testSetInput(TEST *t, const CONTENTS* input) {
+  t->input = input;
+}
 
-    if (!r) {
-      goto END;
-    }
+void testDestory(TEST *t) {
+  return;
+}
 
-    timeval_subtract(&interval, &now, &loop);
-    timeval_add(&(result->real_run), &interval, &(result->real_run));
+static size_t runTotalInput(RUN* runs, unsigned int run) {
+  int id = 0;
 
-    if (usecBufSize == 0) {
-      unsigned long *ptr = (unsigned long*) realloc(usecBuf, (result->loops + 10000 * timeout->tv_sec) * sizeof(unsigned long));
-      if (!ptr) {
-        errno = ENOMEM;
-        goto END;
-      }
-      usecBuf = ptr;
-      usecBufSize = 10000 * timeout->tv_sec;
-    }
-    usecBuf[result->loops] = to_usec(&interval);
-    usecBufSize --;
+  for (RUN* r = runs; r; r = r->next) {
+    if (id == run) return r->inputBytes;
+    id ++;
+  }
+  assert(0);
 
-    result->loops++;
-    result->input_bytes += contents->size;
-    result->output_bytes += r->size;
-    destroy_contents(r);
-  } while (timeval_before_timeout(timeout, &now, &start));
+  return 0;
+}
 
-  unsigned long avg;
-  avg = to_usec(&(result->real_run)) / result->loops;
+static size_t loopTotalInput(LOOP *loops, unsigned int run) {
+  size_t total = 0;
 
+  for (LOOP *l = loops; l; l = l->next) {
+    total += runTotalInput(l->runs, run);
+  }
+
+  return total;
+}
+
+size_t resultTotalInputByRun(RESULT *results, unsigned int run) {
+  size_t total = 0;
+  
+  for (RESULT* r = results; r; r = r->next) {
+     total += loopTotalInput(r->loops, run);
+  }
+
+  return total;
+}
+
+static size_t runTotalOutput(RUN* runs, unsigned int run) {
+  int id = 0;
+
+  for (RUN* r = runs; r; r = r->next) {
+    if (id == run) return r->outputBytes;
+    id ++;
+  }
+  assert(0);
+
+  return 0;
+}
+
+static size_t loopTotalOutput(LOOP *loops, unsigned int run) {
+  size_t total = 0;
+
+  for (LOOP *l = loops; l; l = l->next) {
+    total += runTotalOutput(l->runs, run);
+  }
+
+  return total;
+}
+
+size_t resultTotalOutputByRun(RESULT *results, unsigned int run) {
+  size_t total = 0;
+
+  for (RESULT* r = results; r; r = r->next) {
+     total += loopTotalOutput(r->loops, run);
+  }
+
+  return total;
+}
+
+static int isLoopCorrect(LOOP* loops) {
+  return loops->correct;
+}
+
+static void runTotalTime(RUN* runs, unsigned int run, struct timeval *time) {
+  unsigned int id = 0;
+  for (RUN *r = runs; r; r = r->next) {
+    if (run == ~0 || run == id) timevalAddAdd(time, &(r->interval));
+    id ++;
+  }
+}
+
+static unsigned long loopTotalTime(LOOP* loops, unsigned int run, 
+                          struct timeval *totalTime) {
+  assert(totalTime);
+  totalTime->tv_sec = 0;
+  totalTime->tv_usec = 0;
+
+  for (LOOP* l = loops; l; l = l->next) {
+    runTotalTime(l->runs, run, totalTime);
+  }
+
+  return timevalToUsec(totalTime);
+}
+
+
+unsigned long resultAvgIntervalByRun(RESULT* results, unsigned int run) {
+  struct timeval t;
+  unsigned long total = 0;
+  unsigned long loops = 0;
+  unsigned int id = 0;
+
+  for (RESULT* r = results; r; r = r->next) {
+    total += loopTotalTime(r->loops, run, &t);
+    loops += resultThreadLoops(results, id);
+  }
+
+  return total / loops;
+}
+
+unsigned long resultAvgInterval(RESULT* r) {
+  return resultAvgIntervalByRun(r, ~0);
+}
+
+unsigned long loopSumPow(LOOP* loops, unsigned int run, unsigned long avg) {
+  unsigned long usec = 0;
   unsigned long sumPow = 0;
-  for (unsigned long i = 0; i < result->loops; i++) {
-    sumPow += (usecBuf[i] - avg) * (usecBuf[i] - avg);
-  }
-  result->sd = sqrt(sumPow/result->loops);
 
-  ret = 0;
+  struct timeval t;
 
-END:
-  if (usecBuf) {
-    free(usecBuf);
-    usecBuf = NULL;
+  for (LOOP* l = loops; l; l = l->next) {
+    t.tv_sec = 0;
+    t.tv_usec = 0;
+    
+    runTotalTime(l->runs, run, &t);
+    usec = timevalToUsec(&t);
+
+    sumPow += (usec - avg) * (usec - avg);
   }
+
+  return sumPow;
+}
+
+double resultStdevIntervalByRun(RESULT* results, unsigned int run) {
+  unsigned long avg = resultAvgIntervalByRun(results, run);
+  unsigned long sumPow = 0;
+  unsigned long loops = 0;
+  unsigned int id = 0;
+
+  for (RESULT* r = results; r; r = r->next) {
+    sumPow += loopSumPow(r->loops, run, avg);
+    loops += resultThreadLoops(results, id);
+    id++;
+  }
+
+  return sqrt((double)sumPow/(double)loops);
+}
+
+double resultStdevInterval(RESULT* r) {
+  return resultStdevIntervalByRun(r, ~0);
+}
+
+unsigned long resultRealTimeByRun(RESULT* results, unsigned int run,
+                                  struct timeval *totalTime) {
+  struct timeval t;
+  unsigned long maxTime = 0; 
+
+  for (RESULT* r = results; r; r = r->next) {
+    unsigned long time = loopTotalTime(r->loops, run, &t);
+    if (time > maxTime) {
+      maxTime = time;
+      if (totalTime) {
+        totalTime->tv_sec = t.tv_sec;
+        totalTime->tv_usec = t.tv_usec;
+      }
+    }
+  }
+  return maxTime;
+}
+
+unsigned long resultRealTime(RESULT* results, struct timeval *totalTime) {
+  return resultRealTimeByRun(results, ~0, totalTime);
+}
+
+int isResultCorrect(RESULT* results) {
+  for (RESULT *re = results; re; re = re->next) {
+    if (!isLoopCorrect(re->loops)) return 0;
+  }
+  return 1;
+}
+
+static int runCheckOutputSample(RUN *runs, size_t *samples) {
+  assert(samples);
+
+  for (RUN* r = runs; r; r = r->next) {
+    if (r->outputBytes != *(samples++)) return 0;
+  }
+
+  return 1;
+}
+
+static size_t *runOutputSample(RUN* runs) {
+  size_t *samples = NULL;
+  unsigned int count = 0;
+
+  for (RUN* r = runs; r; r = r->next) {
+    samples = (size_t*)realloc(samples, sizeof(size_t) * (count + 1));
+    samples[count] = r->outputBytes;
+    count ++;
+  }
+
+  return samples;
+}
+
+static size_t *runInputSample(RUN* runs) {
+  size_t *samples = NULL;
+  unsigned int count = 0;
+
+  for (RUN* r = runs; r; r = r->next) {
+    samples = (size_t*)realloc(samples, sizeof(size_t) * (count + 1));
+    samples[count] = r->inputBytes;
+    count ++;
+  }
+
+  return samples;
+}
+
+size_t resultSampleInputByRun(RESULT *r, unsigned int run) {
+  size_t *samples = runInputSample(r->loops->runs);
+  assert (samples);
+
+  unsigned int ret = samples[run];
+
+  free(samples);
+
   return ret;
 }
 
-struct thread_data {
-  RESULT *result;
-  const struct timeval *timeout;
-  CONTENTS *(*run)(const CONTENTS *);
-  const CONTENTS *contents;
-};
+size_t resultSampleOutputByRun(RESULT *r, unsigned int run) {
+  size_t *samples = runOutputSample(r->loops->runs);
+  assert (samples);
+
+  unsigned int ret = samples[run];
+
+  free(samples);
+
+  return ret;
+}
+
+int isLoopResultFixed(LOOP* loops) {
+  int ret = 1;
+  size_t *samples = runOutputSample(loops->runs);
+  assert(samples);
+
+  for (LOOP *l = loops->next; l; l = l->next) {
+    if (!runCheckOutputSample(l->runs, samples)) { 
+      ret = 0;
+      break;
+    }
+  }
+
+  free(samples);  
+  return ret;
+}
+
+int isResultFixed(RESULT* results) {
+  for (RESULT *re = results; re; re = re->next) {
+    if (!isLoopResultFixed(re->loops)) return 0;
+  }
+  return 1;
+}
+
+static int isRunSuccess(RUN* run) {
+  for (RUN *ru = run; ru; ru = ru->next) {
+    if (!ru->success) return 0;
+  }
+  return 1;
+}
+
+static int isLoopSuccess(LOOP* loop) {
+  for (LOOP *l = loop; l; l = l->next) {
+    if (!isRunSuccess(l->runs)) return 0;
+  }
+  return 1;
+}
+
+int isResultSuccess(RESULT* result) {
+  for (RESULT *re = result; re; re = re->next) {
+    if (!isLoopSuccess(re->loops)) return 0;
+  }
+  return 1;
+}
+
+static unsigned long getLoops(LOOP* loop) {
+  unsigned long count = 0;
+  for (LOOP *l = loop; l; l = l->next) {
+    count ++;
+  }
+  return count;
+}
+
+unsigned long resultAvgLoop(RESULT* result) {
+  unsigned long total = 0;
+  unsigned int count = 0;
+
+  for (RESULT *re = result; re; re = re->next) {
+    total += getLoops(re->loops);
+    count ++;
+  }
+
+  return total / count;
+}
+
+double resultStdevLoop(RESULT* results) {
+  unsigned long sumPow = 0;
+  unsigned long avg = resultAvgLoop(results);
+  unsigned int count = 0;
+
+  for (RESULT *re = results; re; re = re->next) {
+    unsigned long loops = getLoops(re->loops);
+    sumPow += (loops - avg) * (loops - avg);
+    count ++;
+  }
+
+  return sqrt((double)sumPow/(double)count);
+}
+
+unsigned long resultThreadLoops(RESULT* result, unsigned int thread) {
+  unsigned int currentThread = 0;
+
+  for (RESULT *re = result; re; re = re->next) {
+    if (currentThread == thread) {
+      return getLoops(re->loops);
+    }
+
+    currentThread ++;
+  }
+  assert(0);
+  return 0;
+}
+
+static void runDestory(RUN *runs) {
+  RUN *fru;
+
+  for (RUN *ru = runs; ru; ) {
+      fru = ru;
+      ru = ru->next;
+      free(fru);
+    }
+}
+
+static void loopDestory(LOOP *loops) {
+  LOOP *fl;
+
+  for (LOOP *l = loops; l; ) {
+    runDestory(l->runs);
+
+    fl = l;
+    l = l->next;
+    free(fl);
+  }
+}
+
+void resultDestory(RESULT *result) {
+  RESULT *fre;
+
+  for (RESULT *re = result; re; ) {
+    loopDestory(re->loops);
+
+    fre = re;
+    re = re->next;
+    free(fre);
+  }
+  return;
+}
 
 static void *loopThread(void *arg) {
-  struct thread_data *data = (struct thread_data *)arg;
+  TEST *t = (TEST *)arg;
 
-  int ret = loop(data->run, data->contents, data->timeout, data->result);
+  const CONTENTS* input;
+  CONTENTS *output, *needFree;
 
-  return (void*)(intptr_t)ret;
+  struct timeval start, loopTime, now;
+  gettimeofday(&start, NULL);
+
+  LOOP *headLoop, *loop, *newLoop;
+  RUN *headRun, *run, *newRun;
+
+  loop = headLoop = NULL;
+
+  do {
+    newLoop = (LOOP *)calloc(1, sizeof(LOOP));
+    assert(newLoop);
+    if (!headLoop) headLoop = newLoop;
+    if (loop) loop->next = newLoop;
+    loop = newLoop;
+
+    input = t->input;
+    output = needFree = NULL;
+    run = headRun = NULL;
+
+    for (unsigned int i = 0; i < t->runCount; i ++) {
+      newRun = (RUN *)calloc(1, sizeof(RUN));
+      if (!headRun) headRun = newRun;
+      if (run) run->next = newRun;
+      run = newRun;
+
+      if (needFree) {
+        destroyContents(needFree);
+        needFree = NULL;
+      }
+      if (output) {
+        needFree = output;
+        output = NULL;
+      }
+
+      gettimeofday(&loopTime, NULL);
+      if (input) {
+        output = (*(t->run[i]))(input);
+      }
+      gettimeofday(&now, NULL);
+
+      if (output) {
+        run->inputBytes = input->size;
+        run->outputBytes = output->size;
+        run->success = 1;
+      }
+
+      timevalSubtract(&(run->interval), &now, &loopTime);
+      
+      input = output;
+    }
+
+    if (needFree) {
+      destroyContents(needFree);
+    }
+
+    if (output) {
+      if (t->verifyData) {
+        loop->correct = !(compareContents(t->verifyData, output));
+      } else {
+        loop->correct = 1;
+      }
+
+      destroyContents(output);
+    }
+
+    loop->runs = headRun;
+  } while (timevalBeforeTimeout(&(t->timeout), &now, &start));
+
+  return headLoop;
 }
 
-int thread_loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-                    const struct timeval *timeout, const unsigned int threads,
-                    RESULT* results) {
-  assert(run != NULL && contents != NULL && contents->body != NULL && 
-        contents->size > 0 && threads > 0);
-  pthread_t *pids = NULL;
-  struct thread_data* data = NULL;
-  int ret = 1;
+RESULT *testRun(TEST *t) {
+  assert(t->run);
+  assert(t->threads);
 
-  pids = malloc(sizeof(pthread_t) * threads);
-  if (!pids) {
-    errno = ENOMEM;
-    goto END;
+  pthread_t *pids = malloc(sizeof(pthread_t) * t->threads);
+  assert(pids);
+
+  for (unsigned int i = 0; i < t->threads; i ++) {
+    pthread_create(pids+i, NULL, loopThread, t);
   }
 
-  data = malloc(sizeof(struct thread_data) * threads);
-  if (!data) {
-    errno = ENOMEM;
-    goto END;
+  RESULT *headResult, *result, *newResult;
+  headResult = result = NULL;
+
+  for (unsigned int i = 0; i < t->threads; i ++) {
+    LOOP* loops = NULL;
+    pthread_join(pids[i], (void *)&loops);
+
+    newResult = (RESULT *)calloc(1, sizeof(RESULT));
+    assert(newResult);
+    if (!headResult) headResult = newResult;
+    if (result) result->next = newResult;
+    result = newResult;
+
+    result->loops = loops;
+    result->thread = i;
   }
 
-  for (int i = 0; i < threads; i++) {
-    data[i].result = results + i;
-    data[i].timeout = timeout;
-    data[i].run = run;
-    data[i].contents = contents;
-    pthread_create(pids+i, NULL, loopThread, (void *)(data+i));
-  }
-
-  for (int i = 0; i < threads; i++) {
-    void* threadRet = NULL;
-    pthread_join(pids[i], threadRet);
-
-    if ((intptr_t)threadRet) {
-      goto END;
-    }
-  }
-
-  ret = 0;
-
-END:
-  if (pids) {
-    free(pids);
-    pids = NULL;
-  }
-  if (data) {
-    free(data);
-    data = NULL;
-  }
-  return ret;
+  return headResult;
 }

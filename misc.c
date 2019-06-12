@@ -2,11 +2,11 @@
 
 #include "misc.h"
 
-unsigned long to_usec(struct timeval *x) {
+unsigned long timevalToUsec(struct timeval *x) {
   return x->tv_sec * 1000000 + x->tv_usec;
 }
 
-void timeval_add(struct timeval *result, const struct timeval *x,
+void timevalAdd(struct timeval *result, const struct timeval *x,
                 const struct timeval *y) {
     result->tv_sec = x->tv_sec + y->tv_sec;
     result->tv_usec += x->tv_usec + y->tv_sec;
@@ -16,11 +16,11 @@ void timeval_add(struct timeval *result, const struct timeval *x,
     }
 }
 
-void timeval_addadd(struct timeval *result, const struct timeval *x) {
-  timeval_add(result, x, result);
+void timevalAddAdd(struct timeval *result, const struct timeval *x) {
+  timevalAdd(result, x, result);
 }
 
-int timeval_subtract(struct timeval *result, const struct timeval *x,
+int timevalSubtract(struct timeval *result, const struct timeval *x,
                             const struct timeval *ya) {
   struct timeval yb;
   memcpy(&yb, ya, sizeof(yb));
@@ -47,11 +47,11 @@ int timeval_subtract(struct timeval *result, const struct timeval *x,
   return x->tv_sec < y->tv_sec;
 }
 
-int timeval_before_timeout(const struct timeval *timeout,
+int timevalBeforeTimeout(const struct timeval *timeout,
                           const struct timeval *x, const struct timeval *y) {
   struct timeval r;
 
-  timeval_subtract(&r, x, y);
+  timevalSubtract(&r, x, y);
 
   if (r.tv_sec < timeout->tv_sec) {
     return 1;
@@ -62,11 +62,11 @@ int timeval_before_timeout(const struct timeval *timeout,
   return 0;
 }
 
-int timeval_before(const struct timeval *x, const struct timeval *y) {
+int timevalBefore(const struct timeval *x, const struct timeval *y) {
   struct timeval e;
 
   e.tv_sec = 0;
   e.tv_usec = 0;
 
-  return timeval_before_timeout(&e, x, y);
+  return timevalBeforeTimeout(&e, x, y);
 }

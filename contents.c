@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <sys/errno.h>
+#include <assert.h>
 
 #include <curl/curl.h>
 
@@ -14,10 +15,7 @@ static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
 
   unsigned char *ptr =
       (unsigned char *)realloc(mem->body, mem->size + realsize + 1);
-  if (ptr == NULL) {
-    errno = ENOMEM;
-    return 0;
-  }
+  assert(ptr);
 
   mem->body = ptr;
   memcpy(&(mem->body[mem->size]), contents, realsize);
@@ -27,11 +25,12 @@ static size_t WriteMemoryCallback(void *contents, size_t size, size_t nmemb,
   return realsize;
 }
 
-CONTENTS *get_contents_url(const char *url) {
+static CONTENTS *getContentsUrl(const char *url) {
   CURL *curl_handle;
   CURLcode res;
 
   CONTENTS *result = calloc(1, sizeof(CONTENTS));
+  assert(result);
 
   curl_global_init(CURL_GLOBAL_ALL);
 
@@ -50,7 +49,7 @@ CONTENTS *get_contents_url(const char *url) {
   res = curl_easy_perform(curl_handle);
 
   if (res != CURLE_OK) {
-    destroy_contents(result);
+    destroyContents(result);
     return NULL;
   }
 
@@ -61,35 +60,58 @@ CONTENTS *get_contents_url(const char *url) {
   return result;
 }
 
-CONTENTS *get_contents(const char *url) {
+CONTENTS *getContents(const char *url) {
   CONTENTS *result = NULL;
 
   FILE *f = fopen(url, "r");
   if (f) {
     result = calloc(1, sizeof(CONTENTS));
+    assert(result);
 
     fseek(f, 0, SEEK_END);
     result->size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
     result->body = (unsigned char *)malloc(result->size + 1);
+    assert(result->body);
     fread(result->body, 1, result->size, f);
 
     fclose(f);
 
     result->body[result->size] = 0;
   } else {
-    result = get_contents_url(url);
+    result = getContentsUrl(url);
   }
 
   return result;
 }
 
-void destroy_contents(CONTENTS *file) {
+int destroyContents(CONTENTS *file) {
   if (file != NULL) {
     if (file->body != NULL) {
       free(file->body);
     }
-    free(file);
   }
+  return 0;
+}
+
+
+CONTENTS* cloneContents(CONTENTS *source) {
+  assert(source != NULL);
+
+  CONTENTS *result = NULL;
+  result = calloc(1, sizeof(CONTENTS));
+  assert(result);
+  result->body = (unsigned char*) malloc(source->size);
+  memcpy(result->body, source->body, source->size);
+  result->size = source->size;
+
+  return result;
+}
+
+int compareContents(const CONTENTS *x, const CONTENTS *y) {
+  assert(x);
+  assert(y);
+
+  return (x->size == y->size) ? memcmp(x->body, y->body, x->size) : 1;
 }
