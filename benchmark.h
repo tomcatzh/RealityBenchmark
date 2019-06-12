@@ -3,21 +3,63 @@
 
 #include <sys/time.h>
 
-struct result_data {
-  struct timeval real_run;
-  double sd;
-  unsigned long loops;
-  size_t input_bytes;
-  size_t output_bytes;
+#include "contents.h"
+
+struct b_run {
+  struct timeval interval;
+  int success;
+  size_t inputBytes;
+  size_t outputBytes;
+  struct b_run *next;
 };
+typedef struct b_run RUN;
 
-typedef struct result_data RESULT;
+struct b_loop {
+  RUN* runs;
+  int correct;
+  struct b_loop *next;
+};
+typedef struct b_loop LOOP;
 
-int loop(CONTENTS* (*run)(const CONTENTS*), const CONTENTS* contents,
-             const struct timeval* timeout, RESULT* result);
+struct b_result {
+  LOOP* loops;
+  unsigned int thread;
+  struct b_result* next;
+};
+typedef struct b_result RESULT;
 
-int thread_loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-                    const struct timeval *timeout, const unsigned int threads,
-                    RESULT* results);
+void resultDestory(RESULT* r);
+
+unsigned long resultThreadLoops(RESULT* r, unsigned int thread,
+                            int successOnly, int testedOnly);
+int isResultSuccess(RESULT* r);
+int isResultFixed(RESULT* r);
+int isResultCorrect(RESULT* r);
+unsigned long resultRealTime(RESULT* r, struct timeval *totalTime);
+unsigned long resultRealTimeByRun(RESULT* r, unsigned int run,
+                                  struct timeval *totalTime);
+size_t resultTotalInputByRun(RESULT *r, unsigned int run);
+size_t resultTotalOutputByRun(RESULT *r, unsigned int run);
+
+struct b_test {
+  struct timeval timeout;
+  unsigned int threads;
+  CONTENTS* (**run)(const CONTENTS*);
+  unsigned int runCount;
+  const CONTENTS* input;
+  const CONTENTS* verifyData;
+};
+typedef struct b_test TEST;
+
+TEST *testNew();
+void testDestory(TEST *t);
+
+void testSetTimeout(TEST *t, struct timeval* timeout);
+void testSetThreads(TEST *t, unsigned int threads);
+void testAddRun(TEST *t, CONTENTS* (*run)(const CONTENTS*));
+void testSetTesting(TEST *t, const CONTENTS* data);
+void testSetInput(TEST *t, const CONTENTS* input);
+
+RESULT *testRun(TEST *t);
 
 #endif

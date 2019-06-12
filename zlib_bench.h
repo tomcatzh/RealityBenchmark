@@ -1,11 +1,11 @@
 #ifndef __ZLIB_BENCH_H
 #define __ZLIB_BENCH_H
 
-CONTENTS* deflate_content(const CONTENTS* plain, const int level);
-CONTENTS* deflate_content_best_speed(const CONTENTS* plain);
-CONTENTS* deflate_content_best_compression(const CONTENTS* plain);
-CONTENTS* deflate_content_default_compression(const CONTENTS* plain);
+CONTENTS* deflateContent(const CONTENTS* plain, const int level);
+CONTENTS* deflateContentBestSpeed(const CONTENTS* plain);
+CONTENTS* deflateContentBestCompression(const CONTENTS* plain);
+CONTENTS* deflateContentDefaultCompression(const CONTENTS* plain);
 
-CONTENTS* inflate_content(const CONTENTS* compressed);
+CONTENTS* inflateContent(const CONTENTS* compressed);
 
 #endif

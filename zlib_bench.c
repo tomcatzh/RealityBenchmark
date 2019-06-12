@@ -9,7 +9,7 @@
 
 #include "zlib_bench.h"
 
-CONTENTS *deflate_content(const CONTENTS *data, const int level) {
+CONTENTS *deflateContent(const CONTENTS *data, const int level) {
   assert(data != NULL);
   assert(data->body != NULL);
   assert(data->size > 0);
@@ -17,25 +17,14 @@ CONTENTS *deflate_content(const CONTENTS *data, const int level) {
   int ret;
   size_t bufSize = 0;
 
-  CONTENTS *result = NULL;
-  z_stream *strm = NULL;
+  CONTENTS *result = calloc(1, sizeof(CONTENTS));
+  assert(result);
 
-  result = calloc(1, sizeof(CONTENTS));
-  if (!result) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
-
-  strm = (z_stream *)calloc(1, sizeof(z_stream));
-  if (!strm) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
+  z_stream *strm = (z_stream *)calloc(1, sizeof(z_stream));
+  assert(strm);
 
   ret = deflateInit(strm, level);
-  if (ret != Z_OK) {
-    goto ERROR_END;
-  }
+  assert(ret == Z_OK);
 
   strm->avail_in = data->size;
   strm->next_in = data->body;
@@ -44,10 +33,7 @@ CONTENTS *deflate_content(const CONTENTS *data, const int level) {
     if (strm->avail_out == 0) {
       unsigned char *ptr =
         (unsigned char *)realloc(result->body, bufSize + data->size);
-      if (ptr == NULL) {
-        errno = ENOMEM;
-        goto ERROR_END;
-      }
+      assert(ptr);
 
       result->body = ptr;
       strm->next_out = ptr + bufSize;
@@ -60,35 +46,26 @@ CONTENTS *deflate_content(const CONTENTS *data, const int level) {
   } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
-  goto END;
 
-ERROR_END:
-  if (result) {
-    destroy_contents(result);
-    result = NULL;
-  }
-END:
-  if (strm) {
-    (void)deflateEnd(strm);
-    free(strm);
-    strm = NULL;
-  }
+  (void)deflateEnd(strm);
+  free(strm);
+
   return result;
 }
 
-CONTENTS *deflate_content_best_speed(const CONTENTS *plain) {
-  return deflate_content(plain, Z_BEST_SPEED);
+CONTENTS *deflateContentBestSpeed(const CONTENTS *plain) {
+  return deflateContent(plain, Z_BEST_SPEED);
 }
 
-CONTENTS *deflate_content_best_compression(const CONTENTS *plain) {
-  return deflate_content(plain, Z_BEST_COMPRESSION);
+CONTENTS *deflateContentBestCompression(const CONTENTS *plain) {
+  return deflateContent(plain, Z_BEST_COMPRESSION);
 }
 
-CONTENTS *deflate_content_default_compression(const CONTENTS *plain) {
-  return deflate_content(plain, Z_DEFAULT_COMPRESSION);
+CONTENTS *deflateContentDefaultCompression(const CONTENTS *plain) {
+  return deflateContent(plain, Z_DEFAULT_COMPRESSION);
 }
 
-CONTENTS *inflate_content(const CONTENTS *data) {
+CONTENTS *inflateContent(const CONTENTS *data) {
   assert(data != NULL);
   assert(data->body != NULL);
   assert(data->size > 0);
@@ -96,25 +73,14 @@ CONTENTS *inflate_content(const CONTENTS *data) {
   int ret;
   size_t bufSize = 0;
 
-  CONTENTS *result = NULL;
-  z_stream *strm = NULL;
+  CONTENTS *result = calloc(1, sizeof(CONTENTS));
+  assert(result);
 
-  result = calloc(1, sizeof(CONTENTS));
-  if (!result) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
-
-  strm = (z_stream *)calloc(1, sizeof(z_stream));
-  if (!strm) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
+  z_stream *strm = (z_stream *)calloc(1, sizeof(z_stream));
+  assert(strm);
 
   ret = inflateInit(strm);
-  if (ret != Z_OK) {
-    goto ERROR_END;
-  }
+  assert(ret == Z_OK);
 
   strm->avail_in = data->size;
   strm->next_in = data->body;
@@ -123,10 +89,7 @@ CONTENTS *inflate_content(const CONTENTS *data) {
     if (strm->avail_out == 0) {
       unsigned char *ptr =
           (unsigned char *)realloc(result->body, bufSize + data->size * 5);
-      if (ptr == NULL) {
-        errno = ENOMEM;
-        goto ERROR_END;
-      }
+      assert(ptr);
 
       result->body = ptr;
       strm->next_out = ptr + bufSize;
@@ -139,19 +102,10 @@ CONTENTS *inflate_content(const CONTENTS *data) {
   } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
-  goto END;
 
-ERROR_END:
-  if (result) {
-    destroy_contents(result);
-    result = NULL;
-  }
-END:
-  if (strm) {
-    (void)inflateEnd(strm);
-    free(strm);
-    strm = NULL;
-  }
+  (void)inflateEnd(strm);
+  free(strm);
+
   return result;
 }
 

@@ -1,6 +1,6 @@
 CC=gcc
 CFLAGS=-I. -Wall -g
-DEPS = contents.h zlib_bench.h
+DEPS = contents.h zlib_bench.h misc.h benchmark.h
 TARGET = zlib_bench
 LIBS = -lcurl -lz -pthread -lm
 OBJS = contents.o main.o zlib_bench.o misc.o benchmark.o

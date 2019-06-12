@@ -2,17 +2,18 @@
 #define __ZLIB_BENCH_MISC_H
 
 #include <stdlib.h>
+#include <sys/time.h>
 
-int timeval_subtract(struct timeval *result, const struct timeval *x,
+int timevalSubtract(struct timeval *result, const struct timeval *x,
                     const struct timeval *ya);
-void timeval_add(struct timeval *result, const struct timeval *x,
+void timevalAdd(struct timeval *result, const struct timeval *x,
                 const struct timeval *y);
-void timeval_addadd(struct timeval *result, const struct timeval *x);
+void timevalAddAdd(struct timeval *result, const struct timeval *x);
 
-int timeval_before(const struct timeval *x, const struct timeval *y);
-int timeval_before_timeout(const struct timeval *timeout,
+int timevalBefore(const struct timeval *x, const struct timeval *y);
+int timevalBeforeTimeout(const struct timeval *timeout,
                           const struct timeval *x, const struct timeval *y);
 
-unsigned long to_usec(struct timeval *x);
+unsigned long timevalToUsec(struct timeval *x);
 
 #endif
