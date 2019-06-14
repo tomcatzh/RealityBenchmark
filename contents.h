@@ -10,7 +10,9 @@ struct f_data {
 
 typedef struct f_data CONTENTS;
 
-CONTENTS *get_contents(const char *url);
-void destroy_contents(CONTENTS *file);
+CONTENTS *getContents(const char *url);
+int destroyContents(CONTENTS *file);
+CONTENTS *cloneContents(CONTENTS *source);
+int compareContents(const CONTENTS *x, const CONTENTS *y);
 
 #endif

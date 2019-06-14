@@ -2,251 +2,220 @@
 #include <errno.h>
 #include <assert.h>
 #include <zlib.h>
-#include <pthread.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <unistd.h>
 
 #include "contents.h"
-#include "zlib_bench.h"
+#include "benchmark.h"
 #include "misc.h"
+#include "external/cJSON.h"
 
-CONTENTS *deflate_content(const CONTENTS *data, const int level) {
-  assert(data != NULL && data->body != NULL && data->size > 0);
+static int level = -1;
+
+static CONTENTS *deflateContent(const CONTENTS *data) {
+  assert(data != NULL);
+  assert(data->body != NULL);
+  assert(data->size > 0);
 
   int ret;
   size_t bufSize = 0;
 
-  CONTENTS *result = NULL;
-  z_stream *strm = NULL;
+  CONTENTS *result = calloc(1, sizeof(CONTENTS));
+  assert(result);
 
-  result = calloc(1, sizeof(CONTENTS));
-  if (!result) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
-
-  strm = (z_stream *)calloc(1, sizeof(z_stream));
-  if (!strm) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
+  z_stream *strm = (z_stream *)calloc(1, sizeof(z_stream));
+  assert(strm);
 
   ret = deflateInit(strm, level);
-  if (ret != Z_OK) {
-    goto ERROR_END;
-  }
+  assert(ret == Z_OK);
 
   strm->avail_in = data->size;
   strm->next_in = data->body;
 
-  while (strm->avail_out == 0) {
-    unsigned char *ptr =
+  do {
+    if (strm->avail_out == 0) {
+      unsigned char *ptr =
         (unsigned char *)realloc(result->body, bufSize + data->size);
-    if (ptr == NULL) {
-      errno = ENOMEM;
-      goto ERROR_END;
+      assert(ptr);
+
+      result->body = ptr;
+      strm->next_out = ptr + bufSize;
+      strm->avail_out = data->size;
+      bufSize += data->size;
     }
-
-    result->body = ptr;
-    strm->next_out = ptr + bufSize;
-    strm->avail_out = data->size;
-    bufSize += data->size;
-
+    
     ret = deflate(strm, Z_FINISH);
     assert(ret != Z_STREAM_ERROR);
-  }
+  } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
-  goto END;
 
-ERROR_END:
-  if (result) {
-    destroy_contents(result);
-    result = NULL;
-  }
-END:
-  if (strm) {
-    (void)deflateEnd(strm);
-    free(strm);
-    strm = NULL;
-  }
+  (void)deflateEnd(strm);
+  free(strm);
+
   return result;
 }
 
-CONTENTS *deflate_content_best_speed(const CONTENTS *plain) {
-  return deflate_content(plain, Z_BEST_SPEED);
-}
-
-CONTENTS *deflate_content_best_compression(const CONTENTS *plain) {
-  return deflate_content(plain, Z_BEST_COMPRESSION);
-}
-
-CONTENTS *deflate_content_default_compression(const CONTENTS *plain) {
-  return deflate_content(plain, Z_DEFAULT_COMPRESSION);
-}
-
-CONTENTS *inflate_content(const CONTENTS *data) {
-  assert(data != NULL && data->body != NULL && data->size > 0);
+static CONTENTS *inflateContent(const CONTENTS *data) {
+  assert(data != NULL);
+  assert(data->body != NULL);
+  assert(data->size > 0);
 
   int ret;
   size_t bufSize = 0;
 
-  CONTENTS *result = NULL;
-  z_stream *strm = NULL;
+  CONTENTS *result = calloc(1, sizeof(CONTENTS));
+  assert(result);
 
-  result = calloc(1, sizeof(CONTENTS));
-  if (!result) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
-
-  strm = (z_stream *)calloc(1, sizeof(z_stream));
-  if (!strm) {
-    errno = ENOMEM;
-    goto ERROR_END;
-  }
+  z_stream *strm = (z_stream *)calloc(1, sizeof(z_stream));
+  assert(strm);
 
   ret = inflateInit(strm);
-  if (ret != Z_OK) {
-    goto ERROR_END;
-  }
+  assert(ret == Z_OK);
 
   strm->avail_in = data->size;
   strm->next_in = data->body;
 
-  while (strm->avail_out == 0) {
-    unsigned char *ptr =
-        (unsigned char *)realloc(result->body, bufSize + data->size * 5);
-    if (ptr == NULL) {
-      errno = ENOMEM;
-      goto ERROR_END;
-    }
+   do {
+    if (strm->avail_out == 0) {
+      unsigned char *ptr =
+          (unsigned char *)realloc(result->body, bufSize + data->size * 5);
+      assert(ptr);
 
-    result->body = ptr;
-    strm->next_out = ptr + bufSize;
-    strm->avail_out = data->size * 5;
-    bufSize += data->size * 5;
+      result->body = ptr;
+      strm->next_out = ptr + bufSize;
+      strm->avail_out = data->size * 5;
+      bufSize += data->size * 5;
+    }
 
     ret = inflate(strm, Z_FINISH);
     assert(ret != Z_STREAM_ERROR);
-  }
+  } while (strm->avail_in > 0);
 
   result->size = strm->total_out;
-  goto END;
 
-ERROR_END:
-  if (result) {
-    destroy_contents(result);
-    result = NULL;
-  }
-END:
-  if (strm) {
-    (void)deflateEnd(strm);
-    free(strm);
-    strm = NULL;
-  }
+  (void)inflateEnd(strm);
+  free(strm);
+
   return result;
 }
 
-int loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-             const struct timeval *timeout, RESULT* result) {
-	assert(run != NULL && contents != NULL && contents->body != NULL && 
-				contents->size > 0 && result != NULL);
+static void printUsage() {
+  fprintf(stderr,
+          "Usage: zlib_bench \n"
+          "[-r seconds <seconds, default is 3>]\n"
+          "[-t threads <threads, default is logic cpu cores>]\n"
+          "[-l level <levels, compress level 1-9, default is -1(6)>]\n"
+          "[-v <verbose json output>] [-f <formated json output>] file|url\n");
+}
 
-	int ret = 1;
+int main(int argc, char **argv) {
+  int ret = -1;
+  CONTENTS *contents = NULL;
 
-  CONTENTS *r = NULL;
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 0;
+  unsigned int threads = 0;
+  int verbose = 0;
+  int formated = 0;
 
-  struct timeval start, loop, now, interval;
+  int index;
+  int c;
+  opterr = 0;
 
-	memset (result, 0, sizeof(RESULT));
-
-  gettimeofday(&start, NULL);
-
-  do {
-    gettimeofday(&loop, NULL);
-    r = (*run)(contents);
-    gettimeofday(&now, NULL);
-
-    if (!r) {
+  while ((c = getopt(argc, argv, "r:t:l:vf")) != -1) {
+    switch (c) {
+    case 'r':
+      timeout.tv_sec = atoi(optarg);
+      break;
+    case 't':
+      threads = atoi(optarg);
+      break;
+    case 'l':
+      level = atoi(optarg);
+      break;
+    case 'v':
+      verbose = 1;
+      break;
+    case 'f':
+      formated = 1;
+      break;
+    case '?':
+      printUsage();
       goto END;
     }
-    result->loops++;
-    result->input_bytes += contents->size;
-    result->output_bytes += r->size;
-    destroy_contents(r);
+  }
 
-    timeval_subtract(&interval, &now, &loop);
-    timeval_add(&(result->real_run), &interval, &(result->real_run));
-  } while (timeval_before_timeout(timeout, &now, &start));
+  if (timeout.tv_sec == 0) {
+    timeout.tv_sec = 3;
+  }
 
+  if (threads == 0) {
+    threads = sysconf(_SC_NPROCESSORS_ONLN);
+    if (threads == 0) 
+      threads = 2;
+  }
+
+  index = optind;
+  if (index >= argc) {
+    printUsage();
+    goto END;
+  }
+
+  contents = getContents(argv[index]);
+
+  if (contents == NULL) {
+    fprintf(stderr, "Get content error\n");
+    goto END;
+  } else if (contents->size == 0) {
+    fprintf(stderr, "Empty content to zip\n");
+    goto END;
+  }
+
+  TEST *t = testNew();
+  testSetThreads(t, threads);
+  testSetTimeout(t, &timeout);
+  testAddRun(t, &deflateContent);
+  testAddRun(t, &inflateContent);
+  testSetInput(t, contents);
+  testSetTesting(t, contents);
+
+  RESULT *r = testRun(t);
+  assert(r);
+
+  cJSON *json = NULL;
+  if (verbose) {
+    json = resultToJSONVerbose(r);
+  } else {
+    json = resultToJSON(r);
+  }
+  assert(json);
+
+  char *jsonString = NULL;
+  if (formated) {
+    jsonString = cJSON_Print(json);
+  } else {
+    jsonString = cJSON_PrintUnformatted(json);
+  }
+  assert(jsonString);
+
+  printf("%s\n", jsonString);
+
+  cJSON_Delete(json);
+  free(jsonString);
+
+  resultDestory(r);
+  
   ret = 0;
 
 END:
+  if (contents) {
+    destroyContents(contents);
+    free(contents);
+    contents = NULL;
+  }
   return ret;
-}
-
-struct thread_data {
-	RESULT *result;
-	const struct timeval *timeout;
-	CONTENTS *(*run)(const CONTENTS *);
-	const CONTENTS *contents;
-};
-
-static void *loopThread(void *arg) {
-	struct thread_data *data = (struct thread_data *)arg;
-
-	int ret = loop(data->run, data->contents, data->timeout, data->result);
-
-	return (void*)(intptr_t)ret;
-}
-
-int thread_loop(CONTENTS *(*run)(const CONTENTS *), const CONTENTS *contents,
-										const struct timeval *timeout, const unsigned int threads,
-										RESULT* results) {
-	assert(run != NULL && contents != NULL && contents->body != NULL && 
-				contents->size > 0 && threads > 0);
-	pthread_t *pids = NULL;
-	struct thread_data* data = NULL;
-	int ret = 1;
-
-	pids = malloc(sizeof(pthread_t) * threads);
-	if (!pids) {
-		errno = ENOMEM;
-		goto END;
-	}
-
-	data = malloc(sizeof(struct thread_data) * threads);
-	if (!data) {
-		errno = ENOMEM;
-		goto END;
-	}
-
-	for (int i = 0; i < threads; i++) {
-		data[i].result = results + i;
-		data[i].timeout = timeout;
-		data[i].run = run;
-		data[i].contents = contents;
-		pthread_create(pids+i, NULL, loopThread, (void *)(data+i));
-	}
-
-	for (int i = 0; i < threads; i++) {
-		void* threadRet = NULL;
-		pthread_join(pids[i], threadRet);
-
-		if ((intptr_t)threadRet) {
-			goto END;
-		}
-	}
-
-	ret = 0;
-
-END:
-	if (pids) {
-		free(pids);
-		pids = NULL;
-	}
-	if (data) {
-		free(data);
-		data = NULL;
-	}
-	return ret;
 }
