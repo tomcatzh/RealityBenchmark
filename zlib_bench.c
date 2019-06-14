@@ -2,14 +2,19 @@
 #include <errno.h>
 #include <assert.h>
 #include <zlib.h>
+#include <stdio.h>
+#include <string.h>
+#include <ctype.h>
+#include <unistd.h>
 
 #include "contents.h"
 #include "benchmark.h"
 #include "misc.h"
+#include "external/cJSON.h"
 
-#include "zlib_bench.h"
+static int level = -1;
 
-CONTENTS *deflateContent(const CONTENTS *data, const int level) {
+static CONTENTS *deflateContent(const CONTENTS *data) {
   assert(data != NULL);
   assert(data->body != NULL);
   assert(data->size > 0);
@@ -53,19 +58,7 @@ CONTENTS *deflateContent(const CONTENTS *data, const int level) {
   return result;
 }
 
-CONTENTS *deflateContentBestSpeed(const CONTENTS *plain) {
-  return deflateContent(plain, Z_BEST_SPEED);
-}
-
-CONTENTS *deflateContentBestCompression(const CONTENTS *plain) {
-  return deflateContent(plain, Z_BEST_COMPRESSION);
-}
-
-CONTENTS *deflateContentDefaultCompression(const CONTENTS *plain) {
-  return deflateContent(plain, Z_DEFAULT_COMPRESSION);
-}
-
-CONTENTS *inflateContent(const CONTENTS *data) {
+static CONTENTS *inflateContent(const CONTENTS *data) {
   assert(data != NULL);
   assert(data->body != NULL);
   assert(data->size > 0);
@@ -109,3 +102,111 @@ CONTENTS *inflateContent(const CONTENTS *data) {
   return result;
 }
 
+static void printUsage() {
+  fprintf(stderr,
+          "Usage: zlib_bench \n"
+          "[-r <seconds, default is 3>]\n"
+          "[-t <threads, default is logic cpu cores>]\n"
+          "[-l <compress level 1-9, default is -1(6)>]\n"
+          "[-v <verbose json output>] "
+          "file|url\n");
+}
+
+int main(int argc, char **argv) {
+  int ret = -1;
+  CONTENTS *contents = NULL;
+
+  struct timeval timeout;
+  timeout.tv_sec = 0;
+  timeout.tv_usec = 0;
+  unsigned int threads = 0;
+  int verbose = 0;
+
+  int index;
+  int c;
+  opterr = 0;
+
+  while ((c = getopt(argc, argv, "r:t:l:v")) != -1) {
+    switch (c) {
+    case 'r':
+      timeout.tv_sec = atoi(optarg);
+      break;
+    case 't':
+      threads = atoi(optarg);
+      break;
+    case 'l':
+      level = atoi(optarg);
+      break;
+    case 'v':
+      verbose = 1;
+      break;
+    case '?':
+      printUsage();
+      goto END;
+    }
+  }
+
+  if (timeout.tv_sec == 0) {
+    timeout.tv_sec = 3;
+  }
+
+  if (threads == 0) {
+    threads = sysconf(_SC_NPROCESSORS_ONLN);
+    if (threads == 0) 
+      threads = 2;
+  }
+
+  index = optind;
+  if (index >= argc) {
+    printUsage();
+    goto END;
+  }
+
+  contents = getContents(argv[index]);
+
+  if (contents == NULL) {
+    fprintf(stderr, "Get content error\n");
+    goto END;
+  } else if (contents->size == 0) {
+    fprintf(stderr, "Empty content to zip\n");
+    goto END;
+  }
+
+  TEST *t = testNew();
+  testSetThreads(t, threads);
+  testSetTimeout(t, &timeout);
+  testAddRun(t, &deflateContent);
+  testAddRun(t, &inflateContent);
+  testSetInput(t, contents);
+  testSetTesting(t, contents);
+
+  RESULT *r = testRun(t);
+  assert(r);
+
+  cJSON *json = NULL;
+  if (verbose) {
+    json = resultToJSONVerbose(r);
+  } else {
+    json = resultToJSON(r);
+  }
+  assert(json);
+  char* jsonString = cJSON_PrintUnformatted(json);
+  assert(jsonString);
+
+  printf("%s\n", jsonString);
+
+  cJSON_Delete(json);
+  free(jsonString);
+
+  resultDestory(r);
+  
+  ret = 0;
+
+END:
+  if (contents) {
+    destroyContents(contents);
+    free(contents);
+    contents = NULL;
+  }
+  return ret;
+}

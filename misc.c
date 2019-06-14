@@ -2,7 +2,7 @@
 
 #include "misc.h"
 
-unsigned long timevalToUsec(struct timeval *x) {
+unsigned long timevalToUsec(const struct timeval *x) {
   return x->tv_sec * 1000000 + x->tv_usec;
 }
 

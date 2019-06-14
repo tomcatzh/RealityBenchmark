@@ -6,6 +6,7 @@
 
 #include "misc.h"
 #include "contents.h"
+#include "external/cJSON.h"
 
 #include "benchmark.h"
 
@@ -45,10 +46,59 @@ void testDestory(TEST *t) {
   return;
 }
 
-static size_t runTotalInput(RUN* runs, unsigned int run) {
+static unsigned long getLoops(const LOOP* loop) {
+  unsigned long count = 0;
+  for (const LOOP *l = loop; l; l = l->next) {
+    count ++;
+  }
+  return count;
+}
+
+static unsigned long resultAvgLoop(const RESULT* result) {
+  unsigned long total = 0;
+  unsigned int count = 0;
+
+  for (const RESULT *re = result; re; re = re->next) {
+    total += getLoops(re->loops);
+    count ++;
+  }
+
+  return total / count;
+}
+
+static double resultStdevLoop(const RESULT* results) {
+  unsigned long sumPow = 0;
+  unsigned long avg = resultAvgLoop(results);
+  unsigned int count = 0;
+
+  for (const RESULT *re = results; re; re = re->next) {
+    unsigned long loops = getLoops(re->loops);
+    sumPow += (loops - avg) * (loops - avg);
+    count ++;
+  }
+
+  return sqrt((double)sumPow/(double)count);
+}
+
+static unsigned long resultThreadLoops(const RESULT* result, const unsigned int thread) {
+  unsigned int currentThread = 0;
+
+  for (const RESULT *re = result; re; re = re->next) {
+    if (currentThread == thread) {
+      return getLoops(re->loops);
+    }
+
+    currentThread ++;
+  }
+  assert(0);
+  return 0;
+}
+
+
+static size_t runTotalInput(const RUN* runs, const unsigned int run) {
   int id = 0;
 
-  for (RUN* r = runs; r; r = r->next) {
+  for (const RUN* r = runs; r; r = r->next) {
     if (id == run) return r->inputBytes;
     id ++;
   }
@@ -57,30 +107,30 @@ static size_t runTotalInput(RUN* runs, unsigned int run) {
   return 0;
 }
 
-static size_t loopTotalInput(LOOP *loops, unsigned int run) {
+static size_t loopTotalInput(const LOOP *loops, const unsigned int run) {
   size_t total = 0;
 
-  for (LOOP *l = loops; l; l = l->next) {
+  for (const LOOP *l = loops; l; l = l->next) {
     total += runTotalInput(l->runs, run);
   }
 
   return total;
 }
 
-size_t resultTotalInputByRun(RESULT *results, unsigned int run) {
+static size_t resultTotalInputByRun(const RESULT *results, const unsigned int run) {
   size_t total = 0;
   
-  for (RESULT* r = results; r; r = r->next) {
+  for (const RESULT* r = results; r; r = r->next) {
      total += loopTotalInput(r->loops, run);
   }
 
   return total;
 }
 
-static size_t runTotalOutput(RUN* runs, unsigned int run) {
+static size_t runTotalOutput(const RUN* runs, const unsigned int run) {
   int id = 0;
 
-  for (RUN* r = runs; r; r = r->next) {
+  for (const RUN* r = runs; r; r = r->next) {
     if (id == run) return r->outputBytes;
     id ++;
   }
@@ -89,31 +139,35 @@ static size_t runTotalOutput(RUN* runs, unsigned int run) {
   return 0;
 }
 
-static size_t loopTotalOutput(LOOP *loops, unsigned int run) {
+static size_t loopTotalOutput(const LOOP *loops, const unsigned int run) {
   size_t total = 0;
 
-  for (LOOP *l = loops; l; l = l->next) {
+  for (const LOOP *l = loops; l; l = l->next) {
     total += runTotalOutput(l->runs, run);
   }
 
   return total;
 }
 
-size_t resultTotalOutputByRun(RESULT *results, unsigned int run) {
+static size_t resultTotalOutputByRun(const RESULT *results, const unsigned int run) {
   size_t total = 0;
 
-  for (RESULT* r = results; r; r = r->next) {
+  for (const RESULT* r = results; r; r = r->next) {
      total += loopTotalOutput(r->loops, run);
   }
 
   return total;
 }
 
-static int isLoopCorrect(LOOP* loops) {
-  return loops->correct;
+static int isLoopCorrect(const LOOP* loops) {
+  for (const LOOP* l = loops; l; l = l->next) {
+    if (!l->correct) return 0;
+  }
+  return 1;
 }
 
 static void runTotalTime(RUN* runs, unsigned int run, struct timeval *time) {
+  assert(time);
   unsigned int id = 0;
   for (RUN *r = runs; r; r = r->next) {
     if (run == ~0 || run == id) timevalAddAdd(time, &(r->interval));
@@ -121,27 +175,26 @@ static void runTotalTime(RUN* runs, unsigned int run, struct timeval *time) {
   }
 }
 
-static unsigned long loopTotalTime(LOOP* loops, unsigned int run, 
+static unsigned long loopTotalTime(const LOOP* loops, const unsigned int run, 
                           struct timeval *totalTime) {
   assert(totalTime);
   totalTime->tv_sec = 0;
   totalTime->tv_usec = 0;
 
-  for (LOOP* l = loops; l; l = l->next) {
+  for (const LOOP* l = loops; l; l = l->next) {
     runTotalTime(l->runs, run, totalTime);
   }
 
   return timevalToUsec(totalTime);
 }
 
-
-unsigned long resultAvgIntervalByRun(RESULT* results, unsigned int run) {
+static unsigned long resultAvgIntervalByRun(const RESULT* results, const unsigned int run) {
   struct timeval t;
   unsigned long total = 0;
   unsigned long loops = 0;
   unsigned int id = 0;
 
-  for (RESULT* r = results; r; r = r->next) {
+  for (const RESULT* r = results; r; r = r->next) {
     total += loopTotalTime(r->loops, run, &t);
     loops += resultThreadLoops(results, id);
   }
@@ -149,11 +202,11 @@ unsigned long resultAvgIntervalByRun(RESULT* results, unsigned int run) {
   return total / loops;
 }
 
-unsigned long resultAvgInterval(RESULT* r) {
+static unsigned long resultAvgInterval(const RESULT* r) {
   return resultAvgIntervalByRun(r, ~0);
 }
 
-unsigned long loopSumPow(LOOP* loops, unsigned int run, unsigned long avg) {
+static unsigned long loopSumPow(LOOP* loops, unsigned int run, unsigned long avg) {
   unsigned long usec = 0;
   unsigned long sumPow = 0;
 
@@ -172,13 +225,13 @@ unsigned long loopSumPow(LOOP* loops, unsigned int run, unsigned long avg) {
   return sumPow;
 }
 
-double resultStdevIntervalByRun(RESULT* results, unsigned int run) {
+static double resultStdevIntervalByRun(const RESULT* results, unsigned int run) {
   unsigned long avg = resultAvgIntervalByRun(results, run);
   unsigned long sumPow = 0;
   unsigned long loops = 0;
   unsigned int id = 0;
 
-  for (RESULT* r = results; r; r = r->next) {
+  for (const RESULT* r = results; r; r = r->next) {
     sumPow += loopSumPow(r->loops, run, avg);
     loops += resultThreadLoops(results, id);
     id++;
@@ -187,16 +240,16 @@ double resultStdevIntervalByRun(RESULT* results, unsigned int run) {
   return sqrt((double)sumPow/(double)loops);
 }
 
-double resultStdevInterval(RESULT* r) {
+static double resultStdevInterval(const RESULT* r) {
   return resultStdevIntervalByRun(r, ~0);
 }
 
-unsigned long resultRealTimeByRun(RESULT* results, unsigned int run,
+static unsigned long resultRealTimeByRun(const RESULT* results, const unsigned int run,
                                   struct timeval *totalTime) {
   struct timeval t;
   unsigned long maxTime = 0; 
 
-  for (RESULT* r = results; r; r = r->next) {
+  for (const RESULT* r = results; r; r = r->next) {
     unsigned long time = loopTotalTime(r->loops, run, &t);
     if (time > maxTime) {
       maxTime = time;
@@ -209,12 +262,12 @@ unsigned long resultRealTimeByRun(RESULT* results, unsigned int run,
   return maxTime;
 }
 
-unsigned long resultRealTime(RESULT* results, struct timeval *totalTime) {
+static unsigned long resultRealTime(const RESULT* results, struct timeval *totalTime) {
   return resultRealTimeByRun(results, ~0, totalTime);
 }
 
-int isResultCorrect(RESULT* results) {
-  for (RESULT *re = results; re; re = re->next) {
+static int isResultCorrect(const RESULT* results) {
+  for (const RESULT *re = results; re; re = re->next) {
     if (!isLoopCorrect(re->loops)) return 0;
   }
   return 1;
@@ -230,11 +283,11 @@ static int runCheckOutputSample(RUN *runs, size_t *samples) {
   return 1;
 }
 
-static size_t *runOutputSample(RUN* runs) {
+static size_t *runOutputSample(const RUN* runs) {
   size_t *samples = NULL;
   unsigned int count = 0;
 
-  for (RUN* r = runs; r; r = r->next) {
+  for (const RUN* r = runs; r; r = r->next) {
     samples = (size_t*)realloc(samples, sizeof(size_t) * (count + 1));
     samples[count] = r->outputBytes;
     count ++;
@@ -256,7 +309,7 @@ static size_t *runInputSample(RUN* runs) {
   return samples;
 }
 
-size_t resultSampleInputByRun(RESULT *r, unsigned int run) {
+static size_t resultSampleInputByRun(const RESULT *r, const unsigned int run) {
   size_t *samples = runInputSample(r->loops->runs);
   assert (samples);
 
@@ -267,7 +320,7 @@ size_t resultSampleInputByRun(RESULT *r, unsigned int run) {
   return ret;
 }
 
-size_t resultSampleOutputByRun(RESULT *r, unsigned int run) {
+static size_t resultSampleOutputByRun(const RESULT *r, const unsigned int run) {
   size_t *samples = runOutputSample(r->loops->runs);
   assert (samples);
 
@@ -278,12 +331,12 @@ size_t resultSampleOutputByRun(RESULT *r, unsigned int run) {
   return ret;
 }
 
-int isLoopResultFixed(LOOP* loops) {
+static int isLoopResultFixed(const LOOP* loops) {
   int ret = 1;
   size_t *samples = runOutputSample(loops->runs);
   assert(samples);
 
-  for (LOOP *l = loops->next; l; l = l->next) {
+  for (const LOOP *l = loops->next; l; l = l->next) {
     if (!runCheckOutputSample(l->runs, samples)) { 
       ret = 0;
       break;
@@ -294,80 +347,32 @@ int isLoopResultFixed(LOOP* loops) {
   return ret;
 }
 
-int isResultFixed(RESULT* results) {
-  for (RESULT *re = results; re; re = re->next) {
+static int isResultFixed(const RESULT* results) {
+  for (const RESULT *re = results; re; re = re->next) {
     if (!isLoopResultFixed(re->loops)) return 0;
   }
   return 1;
 }
 
-static int isRunSuccess(RUN* run) {
-  for (RUN *ru = run; ru; ru = ru->next) {
+static int isRunSuccess(const RUN* run) {
+  for (const RUN *ru = run; ru; ru = ru->next) {
     if (!ru->success) return 0;
   }
   return 1;
 }
 
-static int isLoopSuccess(LOOP* loop) {
-  for (LOOP *l = loop; l; l = l->next) {
+static int isLoopSuccess(const LOOP* loop) {
+  for (const LOOP *l = loop; l; l = l->next) {
     if (!isRunSuccess(l->runs)) return 0;
   }
   return 1;
 }
 
-int isResultSuccess(RESULT* result) {
-  for (RESULT *re = result; re; re = re->next) {
+static int isResultSuccess(const RESULT* result) {
+  for (const RESULT *re = result; re; re = re->next) {
     if (!isLoopSuccess(re->loops)) return 0;
   }
   return 1;
-}
-
-static unsigned long getLoops(LOOP* loop) {
-  unsigned long count = 0;
-  for (LOOP *l = loop; l; l = l->next) {
-    count ++;
-  }
-  return count;
-}
-
-unsigned long resultAvgLoop(RESULT* result) {
-  unsigned long total = 0;
-  unsigned int count = 0;
-
-  for (RESULT *re = result; re; re = re->next) {
-    total += getLoops(re->loops);
-    count ++;
-  }
-
-  return total / count;
-}
-
-double resultStdevLoop(RESULT* results) {
-  unsigned long sumPow = 0;
-  unsigned long avg = resultAvgLoop(results);
-  unsigned int count = 0;
-
-  for (RESULT *re = results; re; re = re->next) {
-    unsigned long loops = getLoops(re->loops);
-    sumPow += (loops - avg) * (loops - avg);
-    count ++;
-  }
-
-  return sqrt((double)sumPow/(double)count);
-}
-
-unsigned long resultThreadLoops(RESULT* result, unsigned int thread) {
-  unsigned int currentThread = 0;
-
-  for (RESULT *re = result; re; re = re->next) {
-    if (currentThread == thread) {
-      return getLoops(re->loops);
-    }
-
-    currentThread ++;
-  }
-  assert(0);
-  return 0;
 }
 
 static void runDestory(RUN *runs) {
@@ -403,6 +408,88 @@ void resultDestory(RESULT *result) {
     free(fre);
   }
   return;
+}
+
+cJSON* resultToJSON(const RESULT *results) {
+  cJSON *resultsJSON = cJSON_CreateObject();
+  assert(resultsJSON);
+
+  cJSON_AddBoolToObject(resultsJSON, "allSuccess", isResultSuccess(results));
+  cJSON_AddBoolToObject(resultsJSON, "allCorrect", isResultCorrect(results));
+  cJSON_AddBoolToObject(resultsJSON, "allFixed", isResultFixed(results));
+  cJSON_AddNumberToObject(resultsJSON, "avgLoops", resultAvgLoop(results));
+  cJSON_AddNumberToObject(resultsJSON, "stdevLoops", resultStdevLoop(results));
+  cJSON_AddNumberToObject(resultsJSON, "time", resultRealTime(results, NULL));
+  cJSON_AddNumberToObject(resultsJSON, "avgInterval", resultAvgInterval(results));
+  cJSON_AddNumberToObject(resultsJSON, "stdevInterval", resultStdevInterval(results));
+
+  cJSON *runsJSON = cJSON_CreateArray();
+  assert(runsJSON);
+
+  unsigned int id = 0;
+  for (RUN *r = results->loops->runs; r; r = r->next) {
+    cJSON *run = cJSON_CreateObject();
+
+    cJSON_AddNumberToObject(run, "input", resultSampleInputByRun(results, id));
+    cJSON_AddNumberToObject(run, "output", resultSampleOutputByRun(results, id));
+    cJSON_AddNumberToObject(run, "totalInput", resultTotalInputByRun(results, id));
+    cJSON_AddNumberToObject(run, "totalOutput", resultTotalOutputByRun(results, id));
+    cJSON_AddNumberToObject(run, "avgInterval", resultAvgIntervalByRun(results, id));
+    cJSON_AddNumberToObject(run, "stdevInterval", resultStdevIntervalByRun(results, id));
+    cJSON_AddItemToObject(runsJSON, "runs", run);
+
+    id ++;
+  }
+  cJSON_AddItemToObject(resultsJSON, "runs", runsJSON);
+
+  return resultsJSON;
+}
+
+static cJSON *runsToJSONVerbose(const RUN* runs) {
+  cJSON *runsJSON = cJSON_CreateArray();
+  assert(runsJSON);
+
+  for (const RUN *r = runs; r; r = r->next) {
+    cJSON *run = cJSON_CreateObject();
+    assert(run);
+
+    cJSON_AddBoolToObject(run, "success", r->success);
+    cJSON_AddNumberToObject(run, "time", timevalToUsec(&(r->interval)));
+    cJSON_AddNumberToObject(run, "input", r->inputBytes);
+    cJSON_AddNumberToObject(run, "output", r->outputBytes);
+
+    cJSON_AddItemToArray(runsJSON, run);
+  }
+
+  return runsJSON;
+}
+
+static cJSON *loopsToJSONVerbose(const LOOP* loops) {
+  cJSON *loopsJSON = cJSON_CreateArray();
+  assert(loopsJSON);
+
+  for (const LOOP *l = loops; l; l = l->next) {
+    cJSON *loop = cJSON_CreateObject();
+    assert(loop);
+
+    cJSON_AddBoolToObject(loop, "correct", l->correct);
+    cJSON_AddItemToObject(loop, "runs", runsToJSONVerbose(l->runs));
+
+    cJSON_AddItemToArray(loopsJSON, loop);
+  }
+
+  return loopsJSON;
+}
+
+cJSON *resultToJSONVerbose(const RESULT *results) {
+  cJSON *resultsJSON = cJSON_CreateArray();
+  assert(resultsJSON);
+
+  for (const RESULT *re = results; re; re = re->next) {
+    cJSON_AddItemToArray(resultsJSON, loopsToJSONVerbose(re->loops));
+  }
+
+  return resultsJSON;
 }
 
 static void *loopThread(void *arg) {
@@ -507,7 +594,6 @@ RESULT *testRun(TEST *t) {
     result = newResult;
 
     result->loops = loops;
-    result->thread = i;
   }
 
   return headResult;
