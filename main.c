@@ -9,6 +9,7 @@
 #include "zlib_bench.h"
 #include "misc.h"
 #include "benchmark.h"
+#include "external/cJSON.h"
 
 static void printUsage() {
 	fprintf(stderr,
@@ -70,7 +71,7 @@ int main(int argc, char **argv) {
   }
 
   TEST *t = testNew();
-  testSetThreads(t, 2);
+  testSetThreads(t, threads);
   testSetTimeout(t, &timeout);
   testAddRun(t, &deflateContentBestCompression);
   testAddRun(t, &inflateContent);
@@ -79,22 +80,13 @@ int main(int argc, char **argv) {
 
   RESULT *r = testRun(t);
 
-  printf("%d\n", isResultSuccess(r));
-  printf("%d\n", isResultFixed(r));
-  printf("%d\n", isResultCorrect(r));
-  printf("%lu\n", resultRealTime(r, NULL));
-  printf("%lu\n", resultRealTimeByRun(r, 0, NULL));
-  printf("%lu\n", resultRealTimeByRun(r, 1, NULL));
-  printf("%lu %lu\n", resultTotalInputByRun(r, 0), resultTotalOutputByRun(r, 1));
-  printf("%lu %lu\n", resultSampleInputByRun(r, 0), resultSampleOutputByRun(r, 0));
-  printf("%lu %lu\n", resultSampleInputByRun(r, 1), resultSampleOutputByRun(r, 1));
+  cJSON *json = resultToJSON(r);
+  char* jsonString = cJSON_Print(json);
 
-  printf("%lu\n", resultThreadLoops(r, 0));
-  printf("%lu\n", resultThreadLoops(r, 1));
-  printf("%lu %.4lf\n", resultAvgLoop(r), resultStdevLoop(r));
-  printf("%lu %.4lf\n", resultAvgInterval(r), resultStdevInterval(r));
-  printf("%lu %.4lf\n", resultAvgIntervalByRun(r, 0), resultStdevIntervalByRun(r, 0));
-  printf("%lu %.4lf\n", resultAvgIntervalByRun(r, 1), resultStdevIntervalByRun(r, 1));
+  printf("%s\n", jsonString);
+
+  cJSON_Delete(json);
+  free(jsonString);
 
   resultDestory(r);
   
