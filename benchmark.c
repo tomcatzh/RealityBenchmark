@@ -54,16 +54,24 @@ static unsigned long getLoops(const LOOP* loop) {
   return count;
 }
 
-static unsigned long resultAvgLoop(const RESULT* result) {
+static unsigned long resultTotalLoops(const RESULT* result) {
   unsigned long total = 0;
-  unsigned int count = 0;
-
   for (const RESULT *re = result; re; re = re->next) {
     total += getLoops(re->loops);
+  }
+  return total;
+}
+
+static unsigned int resultThreads(const RESULT* result) {
+  unsigned int count = 0;
+  for (const RESULT *re = result; re; re = re->next) {
     count ++;
   }
+  return count;
+}
 
-  return total / count;
+static unsigned long resultAvgLoop(const RESULT* result) {
+  return resultTotalLoops(result) / resultThreads(result);
 }
 
 static double resultStdevLoop(const RESULT* results) {
@@ -417,6 +425,8 @@ cJSON* resultToJSON(const RESULT *results) {
   cJSON_AddBoolToObject(resultsJSON, "allSuccess", isResultSuccess(results));
   cJSON_AddBoolToObject(resultsJSON, "allCorrect", isResultCorrect(results));
   cJSON_AddBoolToObject(resultsJSON, "allFixed", isResultFixed(results));
+  cJSON_AddNumberToObject(resultsJSON, "threads", resultThreads(results));
+  cJSON_AddNumberToObject(resultsJSON, "totalLoops", resultTotalLoops(results));
   cJSON_AddNumberToObject(resultsJSON, "avgLoops", resultAvgLoop(results));
   cJSON_AddNumberToObject(resultsJSON, "stdevLoops", resultStdevLoop(results));
   cJSON_AddNumberToObject(resultsJSON, "time", resultRealTime(results, NULL));

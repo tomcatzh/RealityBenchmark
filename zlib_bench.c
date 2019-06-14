@@ -105,11 +105,10 @@ static CONTENTS *inflateContent(const CONTENTS *data) {
 static void printUsage() {
   fprintf(stderr,
           "Usage: zlib_bench \n"
-          "[-r <seconds, default is 3>]\n"
-          "[-t <threads, default is logic cpu cores>]\n"
-          "[-l <compress level 1-9, default is -1(6)>]\n"
-          "[-v <verbose json output>] "
-          "file|url\n");
+          "[-r seconds <seconds, default is 3>]\n"
+          "[-t threads <threads, default is logic cpu cores>]\n"
+          "[-l level <levels, compress level 1-9, default is -1(6)>]\n"
+          "[-v <verbose json output>] [-f <formated json output>] file|url\n");
 }
 
 int main(int argc, char **argv) {
@@ -121,12 +120,13 @@ int main(int argc, char **argv) {
   timeout.tv_usec = 0;
   unsigned int threads = 0;
   int verbose = 0;
+  int formated = 0;
 
   int index;
   int c;
   opterr = 0;
 
-  while ((c = getopt(argc, argv, "r:t:l:v")) != -1) {
+  while ((c = getopt(argc, argv, "r:t:l:vf")) != -1) {
     switch (c) {
     case 'r':
       timeout.tv_sec = atoi(optarg);
@@ -139,6 +139,9 @@ int main(int argc, char **argv) {
       break;
     case 'v':
       verbose = 1;
+      break;
+    case 'f':
+      formated = 1;
       break;
     case '?':
       printUsage();
@@ -190,7 +193,13 @@ int main(int argc, char **argv) {
     json = resultToJSON(r);
   }
   assert(json);
-  char* jsonString = cJSON_PrintUnformatted(json);
+
+  char *jsonString = NULL;
+  if (formated) {
+    jsonString = cJSON_Print(json);
+  } else {
+    jsonString = cJSON_PrintUnformatted(json);
+  }
   assert(jsonString);
 
   printf("%s\n", jsonString);
