@@ -3,6 +3,7 @@
 
 #include <stdlib.h>
 #include <sys/time.h>
+#include <inttypes.h>
 
 int timevalSubtract(struct timeval *result, const struct timeval *x,
                     const struct timeval *ya);
@@ -15,5 +16,7 @@ int timevalBeforeTimeout(const struct timeval *timeout,
                           const struct timeval *x, const struct timeval *y);
 
 unsigned long timevalToUsec(const struct timeval *x);
+
+uintmax_t parseHumanSize (const char* s);
 
 #endif
