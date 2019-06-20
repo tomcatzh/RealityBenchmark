@@ -196,7 +196,7 @@ static unsigned long loopTotalTime(const LOOP* loops, const unsigned int run,
   return timevalToUsec(totalTime);
 }
 
-static unsigned long resultAvgIntervalByRun(const RESULT* results, const unsigned int run) {
+static double resultAvgIntervalByRun(const RESULT* results, const unsigned int run) {
   struct timeval t;
   unsigned long total = 0;
   unsigned long loops = 0;
@@ -207,10 +207,10 @@ static unsigned long resultAvgIntervalByRun(const RESULT* results, const unsigne
     loops += resultThreadLoops(results, id);
   }
 
-  return total / loops;
+  return (double)total / (double)loops;
 }
 
-static unsigned long resultAvgInterval(const RESULT* r) {
+static double resultAvgInterval(const RESULT* r) {
   return resultAvgIntervalByRun(r, ~0);
 }
 

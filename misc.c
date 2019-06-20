@@ -1,4 +1,6 @@
 #include <string.h>
+#include <errno.h>
+#include <stdlib.h>
 
 #include "misc.h"
 
@@ -69,4 +71,51 @@ int timevalBefore(const struct timeval *x, const struct timeval *y) {
   e.tv_usec = 0;
 
   return timevalBeforeTimeout(&e, x, y);
+}
+
+uintmax_t parseHumanSize (const char* s) {
+  char *endp = (char *)s;
+  int sh;
+  errno = 0;
+
+  uintmax_t x = strtoumax(s, &endp, 10);
+  if (errno || endp == s) {
+    errno = EINVAL;
+    goto ERROR;
+  }
+
+  switch (*endp) {
+  case 'k':
+  case 'K':
+    sh = 10;
+    break;
+  case 'M':
+  case 'm':
+    sh = 20;
+    break;
+  case 'g':
+  case 'G':
+    sh = 30;
+    break;
+  case 0:
+    sh = 0;
+    break;
+  default:
+    goto ERROR;
+  }
+  if (sh && endp[1]) {
+    errno = EINVAL;
+    goto ERROR;
+  }
+
+  if (x > SIZE_MAX>>sh) {
+    errno = ERANGE;
+    goto ERROR;
+  }
+
+  x <<= sh; 
+
+  return x;
+ERROR:
+  return 0;
 }

@@ -3,6 +3,10 @@
 #include <string.h>
 #include <sys/errno.h>
 #include <assert.h>
+#include <fcntl.h>
+#include <unistd.h>
+#include <sys/uio.h>
+#include <sys/types.h>
 
 #include <curl/curl.h>
 
@@ -60,6 +64,24 @@ static CONTENTS *getContentsUrl(const char *url) {
   return result;
 }
 
+CONTENTS *randomContents(const size_t size) {
+  CONTENTS *result;
+  result = calloc(1, sizeof(CONTENTS));
+  assert(result);
+
+  result->body = (unsigned char*)malloc(size);
+  assert(result->body);
+  result->size = size;
+
+  int fd = open("/dev/urandom", O_RDONLY);
+  assert(fd >= 0);
+  ssize_t ret = read(fd, result->body, result->size);
+  assert(ret == result->size);
+  close(fd);
+
+  return result;
+}
+
 CONTENTS *getContents(const char *url) {
   CONTENTS *result = NULL;
 
@@ -72,13 +94,11 @@ CONTENTS *getContents(const char *url) {
     result->size = ftell(f);
     fseek(f, 0, SEEK_SET);
 
-    result->body = (unsigned char *)malloc(result->size + 1);
+    result->body = (unsigned char *)malloc(result->size );
     assert(result->body);
     fread(result->body, 1, result->size, f);
 
     fclose(f);
-
-    result->body[result->size] = 0;
   } else {
     result = getContentsUrl(url);
   }

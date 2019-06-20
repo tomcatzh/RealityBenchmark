@@ -11,6 +11,8 @@ struct f_data {
 typedef struct f_data CONTENTS;
 
 CONTENTS *getContents(const char *url);
+CONTENTS *randomContents(const size_t size);
+
 int destroyContents(CONTENTS *file);
 CONTENTS *cloneContents(CONTENTS *source);
 int compareContents(const CONTENTS *x, const CONTENTS *y);

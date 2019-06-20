@@ -5,7 +5,6 @@
 #include <stdio.h>
 #include <string.h>
 #include <ctype.h>
-#include <unistd.h>
 
 #include "contents.h"
 #include "benchmark.h"
@@ -108,7 +107,8 @@ static void printUsage() {
           "[-r seconds <seconds, default is 3>]\n"
           "[-t threads <threads, default is logic cpu cores>]\n"
           "[-l level <levels, compress level 1-9, default is -1(6)>]\n"
-          "[-v <verbose json output>] [-f <formated json output>] file|url\n");
+          "[-v <verbose json output>] [-f <formated json output>]\n"
+          "-u size <use random data block, size can use K, M, G>|file|url\n");
 }
 
 int main(int argc, char **argv) {
@@ -121,12 +121,13 @@ int main(int argc, char **argv) {
   unsigned int threads = 0;
   int verbose = 0;
   int formated = 0;
+  size_t randomSize = 0;
 
   int index;
   int c;
   opterr = 0;
 
-  while ((c = getopt(argc, argv, "r:t:l:vf")) != -1) {
+  while ((c = getopt(argc, argv, "r:t:l:vfu:")) != -1) {
     switch (c) {
     case 'r':
       timeout.tv_sec = atoi(optarg);
@@ -136,6 +137,9 @@ int main(int argc, char **argv) {
       break;
     case 'l':
       level = atoi(optarg);
+      break;
+    case 'u':
+      randomSize = parseHumanSize(optarg);
       break;
     case 'v':
       verbose = 1;
@@ -159,21 +163,26 @@ int main(int argc, char **argv) {
       threads = 2;
   }
 
-  index = optind;
-  if (index >= argc) {
-    printUsage();
-    goto END;
-  }
+  if (randomSize) {
+    contents = randomContents(randomSize);
+  } else {
+    index = optind;
+    if (index >= argc) {
+      printUsage();
+      goto END;
+    }
 
-  contents = getContents(argv[index]);
+    contents = getContents(argv[index]);
 
-  if (contents == NULL) {
-    fprintf(stderr, "Get content error\n");
-    goto END;
-  } else if (contents->size == 0) {
-    fprintf(stderr, "Empty content to zip\n");
-    goto END;
+    if (contents == NULL) {
+      fprintf(stderr, "Get content error\n");
+      goto END;
+    } else if (contents->size == 0) {
+      fprintf(stderr, "Empty content to zip\n");
+      goto END;
+    }
   }
+  
 
   TEST *t = testNew();
   testSetThreads(t, threads);
