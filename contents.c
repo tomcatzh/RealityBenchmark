@@ -77,6 +77,7 @@ CONTENTS *randomContents(const size_t size) {
   assert(fd >= 0);
   ssize_t ret = read(fd, result->body, result->size);
   assert(ret == result->size);
+  close(fd);
 
   return result;
 }
