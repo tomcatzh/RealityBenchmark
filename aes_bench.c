@@ -31,8 +31,8 @@ static unsigned char aad[32];
 
 unsigned int cipherMode = 0;
 unsigned int keyLength = 0;
-const int tagLength = 16;
-const int ccmIvLength = 13;
+const int tagLength = 12;
+const int ccmIvLength = 7;
 
 static void init() {
   int fd = open("/dev/urandom", O_RDONLY);
@@ -188,7 +188,6 @@ static CONTENTS* decryptContent(const CONTENTS* data) {
   ret->body = (unsigned char*)malloc(dataLength);
   assert(ret->body);
 
-  printf("%lu\n", dataLength);
   i = EVP_DecryptUpdate(ctx, ret->body, &len, data->body, dataLength);
   assert(i==1);
   ret->size = len;
@@ -198,9 +197,11 @@ static CONTENTS* decryptContent(const CONTENTS* data) {
     assert(i==1);
   }
 
-  i = EVP_DecryptFinal_ex(ctx, ret->body + len, &len);
-  assert(i==1);
-  ret->size += len;
+  if (cipherMode != cipherModeCCM) {
+    i = EVP_DecryptFinal_ex(ctx, ret->body + len, &len);
+    assert(i==1);
+    ret->size += len;
+  }
 
   EVP_CIPHER_CTX_free(ctx);
 
@@ -315,7 +316,7 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
 
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tagLength, NULL);
 
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_192_ccm(), NULL, key, iv);
+    i = EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
     assert(i==1);
 
     i = EVP_EncryptUpdate(ctx, NULL, &len, NULL, data->size);
