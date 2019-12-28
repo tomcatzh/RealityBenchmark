@@ -36,12 +36,12 @@ static CONTENTS *deflateContent(const CONTENTS *data) {
   do {
     if (strm->avail_out == 0) {
       unsigned char *ptr =
-        (unsigned char *)realloc(result->body, bufSize + data->size);
+        (unsigned char *)realloc(result->body, bufSize + data->size * 2);
       assert(ptr);
 
       result->body = ptr;
       strm->next_out = ptr + bufSize;
-      strm->avail_out = data->size;
+      strm->avail_out = data->size * 2;
       bufSize += data->size;
     }
     
