@@ -52,3 +52,5 @@ Mkfile.old
 dkms.conf
 zlib_bench
 aes_bench
+/test_gcm
+/.vscode
