@@ -29,10 +29,10 @@ static unsigned char aad[32];
 #define cipherModeGCM (1 << 4)
 #define cipherModeCCM (1 << 5)
 
-unsigned int cipherMode = 0;
-unsigned int keyLength = 0;
-const int tagLength = 12;
-const int ccmIvLength = 7;
+static unsigned int cipherMode = 0;
+static unsigned int keyLength = 0;
+static int tagLength = 12;
+static int ivLength = 7;
 
 static void init() {
   int fd = open("/dev/urandom", O_RDONLY);
@@ -138,7 +138,7 @@ static CONTENTS* decryptContent(const CONTENTS* data) {
 
     dataLength -= tagLength;
 
-    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(iv), NULL);
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLength, NULL);
     assert(i==1);
 
     i = EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv);
@@ -164,7 +164,7 @@ static CONTENTS* decryptContent(const CONTENTS* data) {
 
     dataLength -= tagLength;
 
-    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ccmIvLength, NULL);
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ivLength, NULL);
     assert(i==1);
 
     i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tagLength, data->body + dataLength);
@@ -286,7 +286,7 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
 
     dataLength += tagLength;
 
-    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, sizeof(iv), NULL);
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLength, NULL);
     assert(i==1);
 
     i = EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
@@ -311,7 +311,7 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
 
     dataLength += tagLength;
 
-    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ccmIvLength, NULL);
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ivLength, NULL);
     assert(i==1);
 
     EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tagLength, NULL);
@@ -457,8 +457,12 @@ int main(int argc, char **argv) {
     cipherMode = cipherModeCTR;
   } else if (strcmp(mode, "GCM") == 0) {
     cipherMode = cipherModeGCM;
+    ivLength = 12;
+    tagLength = 16;
   } else if (strcmp(mode, "CCM") == 0) {
     cipherMode = cipherModeCCM;
+    ivLength = 7;
+    tagLength = 12;
   } else {
     printUsage();
     goto END;
