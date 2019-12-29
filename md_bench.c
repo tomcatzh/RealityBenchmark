@@ -33,7 +33,7 @@ static CONTENTS* mdContent(const CONTENTS* data) {
 #if OPENSSL_VERSION_NUMBER < 0x010100000L
     EVP_MD_CTX_init(&mdctx);
     ctx = &mdctx;
-#elif
+#else
     ctx = EVP_MD_CTX_new();
 #endif
 
@@ -49,7 +49,7 @@ static CONTENTS* mdContent(const CONTENTS* data) {
 
 #if OPENSSL_VERSION_NUMBER < 0x010100000L
     EVP_MD_CTX_cleanup(&mdctx);
-#elif
+#else
     EVP_MD_CTX_free(ctx);
 #endif
 
