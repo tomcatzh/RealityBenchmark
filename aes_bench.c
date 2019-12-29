@@ -501,26 +501,7 @@ int main(int argc, char **argv) {
   RESULT *r = testRun(t);
   assert(r);
 
-  cJSON *json = NULL;
-  if (verbose) {
-    json = resultToJSONVerbose(r);
-  } else {
-    json = resultToJSON(r);
-  }
-  assert(json);
-
-  char *jsonString = NULL;
-  if (formated) {
-    jsonString = cJSON_Print(json);
-  } else {
-    jsonString = cJSON_PrintUnformatted(json);
-  }
-  assert(jsonString);
-
-  printf("%s\n", jsonString);
-
-  cJSON_Delete(json);
-  free(jsonString);
+  printResult(r, verbose, formated);
 
   resultDestory(r);
 

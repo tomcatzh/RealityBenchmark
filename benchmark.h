@@ -30,8 +30,7 @@ typedef struct b_result RESULT;
 
 void resultDestory(RESULT* r);
 
-cJSON* resultToJSONVerbose(const RESULT *r);
-cJSON* resultToJSON(const RESULT *r);
+void printResult(const RESULT *r, int verbose, int formated);
 
 struct b_test {
   struct timeval timeout;
