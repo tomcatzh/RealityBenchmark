@@ -12,7 +12,6 @@
 #include "contents.h"
 #include "benchmark.h"
 #include "misc.h"
-#include "external/cJSON.h"
 
 #define keyLength128Bit 16
 #define keyLength192Bit 24
