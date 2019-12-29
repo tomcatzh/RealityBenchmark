@@ -418,7 +418,7 @@ void resultDestory(RESULT *result) {
   return;
 }
 
-cJSON* resultToJSON(const RESULT *results) {
+static cJSON* resultToJSON(const RESULT *results) {
   cJSON *resultsJSON = cJSON_CreateObject();
   assert(resultsJSON);
 
@@ -491,7 +491,7 @@ static cJSON *loopsToJSONVerbose(const LOOP* loops) {
   return loopsJSON;
 }
 
-cJSON *resultToJSONVerbose(const RESULT *results) {
+static cJSON *resultToJSONVerbose(const RESULT *results) {
   cJSON *resultsJSON = cJSON_CreateArray();
   assert(resultsJSON);
 
@@ -607,4 +607,27 @@ RESULT *testRun(TEST *t) {
   }
 
   return headResult;
+}
+
+void printResult(const RESULT *r, int verbose, int formated) {
+  cJSON *json = NULL;
+  if (verbose) {
+    json = resultToJSONVerbose(r);
+  } else {
+    json = resultToJSON(r);
+  }
+  assert(json);
+
+  char *jsonString = NULL;
+  if (formated) {
+    jsonString = cJSON_Print(json);
+  } else {
+    jsonString = cJSON_PrintUnformatted(json);
+  }
+  assert(jsonString);
+
+  printf("%s\n", jsonString);
+
+  cJSON_Delete(json);
+  free(jsonString);
 }

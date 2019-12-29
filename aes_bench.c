@@ -12,7 +12,6 @@
 #include "contents.h"
 #include "benchmark.h"
 #include "misc.h"
-#include "external/cJSON.h"
 
 #define keyLength128Bit 16
 #define keyLength192Bit 24
@@ -20,22 +19,19 @@
 
 static unsigned char key[32];
 static unsigned char iv[16];
+static unsigned char aad[32];
 
-#define cipherMode128CBC (1 << 0)
-#define cipherMode192CBC (1 << 1)
-#define cipherMode256CBC (1 << 2)
-#define cipherMode128CFB (1 << 3)
-#define cipherMode192CFB (1 << 4)
-#define cipherMode256CFB (1 << 5)
-#define cipherMode128OFB (1 << 6)
-#define cipherMode192OFB (1 << 7)
-#define cipherMode256OFB (1 << 8)
-#define cipherMode128CTR (1 << 9)
-#define cipherMode192CTR (1 << 10)
-#define cipherMode256CTR (1 << 11)
+#define cipherModeCBC (1 << 0)
+#define cipherModeCFB (1 << 1)
+#define cipherModeOFB (1 << 2)
+#define cipherModeCTR (1 << 3)
+#define cipherModeGCM (1 << 4)
+#define cipherModeCCM (1 << 5)
 
-unsigned int cipherMode = 0;
-unsigned int keyLength = 0;
+static unsigned int cipherMode = 0;
+static unsigned int keyLength = 0;
+static int tagLength = 12;
+static int ivLength = 7;
 
 static void init() {
   int fd = open("/dev/urandom", O_RDONLY);
@@ -46,8 +42,13 @@ static void init() {
   ret = read(fd, key, keyLength);
   assert(ret == keyLength);
 
-  ret = read(fd, iv, 16);
-  assert(ret == 16);
+  ret = read(fd, iv, sizeof(iv));
+  assert(ret == sizeof(iv));
+
+  if (cipherMode == cipherModeGCM || cipherMode == cipherModeCCM) {
+    ret = read(fd, aad, sizeof(aad));
+    assert(ret == sizeof(aad));
+  }
 
   close(fd);
 }
@@ -59,60 +60,147 @@ static CONTENTS* decryptContent(const CONTENTS* data) {
   assert(ctx);
 
   int i = 0;
+
+  int len;
+  size_t dataLength = data->size;
+
   switch (cipherMode) {
-  case cipherMode128CBC:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);
+  case cipherModeCBC:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_cbc(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+        break;
+    }
+    assert(i==1);
     break;
-  case cipherMode192CBC:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_192_cbc(), NULL, key, iv);
+  case cipherModeCFB:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_cfb(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_cfb(), NULL, key, iv);
+        break;
+    }
+    assert(i==1);
     break;
-  case cipherMode256CBC:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  case cipherModeOFB:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_ofb(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_ofb(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_ofb(), NULL, key, iv);
+        break;
+    }
+    assert(i==1);
     break;
-  case cipherMode128CFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+  case cipherModeCTR:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_ctr(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_ctr(), NULL, key, iv);
+        break;
+    }
+    assert(i==1);
     break;
-  case cipherMode192CFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_192_cfb(), NULL, key, iv);
+  case cipherModeGCM:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_gcm(), NULL, NULL, NULL);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        break;
+    }
+    assert(i==1);
+
+    dataLength -= tagLength;
+
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLength, NULL);
+    assert(i==1);
+
+    i = EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv);
+    assert(i==1);
+
+    i = EVP_DecryptUpdate(ctx, NULL, &len, aad, sizeof(aad));
+    assert(i==1);
+
     break;
-  case cipherMode256CFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_256_cfb(), NULL, key, iv);
-    break;
-  case cipherMode128OFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_128_ofb(), NULL, key, iv);
-    break;
-  case cipherMode192OFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_192_ofb(), NULL, key, iv);
-    break;
-  case cipherMode256OFB:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_256_ofb(), NULL, key, iv);
-    break;
-  case cipherMode128CTR:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv);
-    break;
-  case cipherMode192CTR:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_192_ctr(), NULL, key, iv);
-    break;
-  case cipherMode256CTR:
-    i = EVP_DecryptInit_ex(ctx, EVP_aes_256_ctr(), NULL, key, iv);
+  case cipherModeCCM:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_128_ccm(), NULL, NULL, NULL);
+        break;
+      case keyLength192Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_192_ccm(), NULL, NULL, NULL);
+        break;
+      case keyLength256Bit:
+        i = EVP_DecryptInit_ex(ctx, EVP_aes_256_ccm(), NULL, NULL, NULL);
+        break;
+    }
+    assert(i==1);
+
+    dataLength -= tagLength;
+
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ivLength, NULL);
+    assert(i==1);
+
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tagLength, data->body + dataLength);
+    assert(i==1);
+
+    i = EVP_DecryptInit_ex(ctx, NULL, NULL, key, iv);
+    assert(i==1);
+
+    i = EVP_DecryptUpdate(ctx, NULL, &len, NULL, dataLength);
+    assert(i==1);
+
+    i = EVP_DecryptUpdate(ctx, NULL, &len, aad, sizeof(aad));
+    assert(i==1);
+
     break;
   }
-  assert(i==1);
 
   CONTENTS* ret = NULL;
   ret = calloc(1, sizeof(CONTENTS));
   assert(ret);
-  ret->body = (unsigned char*)malloc(data->size);
+  ret->body = (unsigned char*)malloc(dataLength);
+  assert(ret->body);
 
-  int len;
-
-  i = EVP_DecryptUpdate(ctx, ret->body, &len, data->body, data->size);
+  i = EVP_DecryptUpdate(ctx, ret->body, &len, data->body, dataLength);
   assert(i==1);
   ret->size = len;
 
-  i = EVP_DecryptFinal_ex(ctx, ret->body + len, &len);
-  assert(i==1);
-  ret->size += len;
+  if (cipherMode == cipherModeGCM) {
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_TAG, tagLength, data->body + dataLength);
+    assert(i==1);
+  }
+
+  if (cipherMode != cipherModeCCM) {
+    i = EVP_DecryptFinal_ex(ctx, ret->body + len, &len);
+    assert(i==1);
+    ret->size += len;
+  }
 
   EVP_CIPHER_CTX_free(ctx);
 
@@ -125,43 +213,117 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
   ctx = EVP_CIPHER_CTX_new();
   assert(ctx);
 
+  int len;
+  size_t dataLength = data->size + keyLength - 1;
+
   int i = 0;
   switch (cipherMode) {
-  case cipherMode128CBC:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);
+  case cipherModeCBC:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_cbc(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_cbc(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+        break;
+    }
     break;
-  case cipherMode192CBC:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_192_cbc(), NULL, key, iv);
+  case cipherModeCFB:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_cfb(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_cfb(), NULL, key, iv);
+        break;
+    }
     break;
-  case cipherMode256CBC:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_256_cbc(), NULL, key, iv);
+  case cipherModeOFB:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_cfb(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_cfb(), NULL, key, iv);
+        break;
+    }
     break;
-  case cipherMode128CFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_128_cfb(), NULL, key, iv);
+  case cipherModeCTR:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_ctr(), NULL, key, iv);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_ctr(), NULL, key, iv);
+        break;
+    }
     break;
-  case cipherMode192CFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_192_cfb(), NULL, key, iv);
+  case cipherModeGCM:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_gcm(), NULL, NULL, NULL);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_gcm(), NULL, NULL, NULL);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_gcm(), NULL, NULL, NULL);
+        break;
+    }
+
+    dataLength += tagLength;
+
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_SET_IVLEN, ivLength, NULL);
+    assert(i==1);
+
+    i = EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
+    assert(i==1);
+
+    i = EVP_EncryptUpdate(ctx, NULL, &len, aad, sizeof(aad));
+    assert(i==1);
+
     break;
-  case cipherMode256CFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_256_cfb(), NULL, key, iv);
-    break;
-  case cipherMode128OFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_128_ofb(), NULL, key, iv);
-    break;
-  case cipherMode192OFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_192_ofb(), NULL, key, iv);
-    break;
-  case cipherMode256OFB:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_256_ofb(), NULL, key, iv);
-    break;
-  case cipherMode128CTR:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_128_ctr(), NULL, key, iv);
-    break;
-  case cipherMode192CTR:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_192_ctr(), NULL, key, iv);
-    break;
-  case cipherMode256CTR:
-    i = EVP_EncryptInit_ex(ctx, EVP_aes_256_ctr(), NULL, key, iv);
+  case cipherModeCCM:
+    switch (keyLength) {
+      case keyLength128Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_128_ccm(), NULL, NULL, NULL);
+        break;
+      case keyLength192Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_192_ccm(), NULL, NULL, NULL);
+        break;
+      case keyLength256Bit:
+        i = EVP_EncryptInit_ex(ctx, EVP_aes_256_ccm(), NULL, NULL, NULL);
+        break;
+    }
+
+    dataLength += tagLength;
+
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_IVLEN, ivLength, NULL);
+    assert(i==1);
+
+    EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_SET_TAG, tagLength, NULL);
+
+    i = EVP_EncryptInit_ex(ctx, NULL, NULL, key, iv);
+    assert(i==1);
+
+    i = EVP_EncryptUpdate(ctx, NULL, &len, NULL, data->size);
+    assert(i==1);
+
+    i = EVP_EncryptUpdate(ctx, NULL, &len, aad, sizeof(aad));
+    assert(i==1);
+
     break;
   }
   assert(i==1);
@@ -169,9 +331,7 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
   CONTENTS* ret = NULL;
   ret = calloc(1, sizeof(CONTENTS));
   assert(ret);
-  ret->body = (unsigned char*)malloc(data->size + keyLength - 1);
-
-  int len;
+  ret->body = (unsigned char*)malloc(dataLength);
 
   i = EVP_EncryptUpdate(ctx, ret->body, &len, data->body, data->size);
   assert(i==1);
@@ -180,6 +340,20 @@ static CONTENTS *encryptContent(const CONTENTS* data) {
   i = EVP_EncryptFinal_ex(ctx, ret->body + len, &len);
   assert(i==1);
   ret->size += len;
+
+  switch (cipherMode)
+  {
+  case cipherModeGCM:
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_GCM_GET_TAG, tagLength, ret->body + ret->size);
+    assert(i==1);
+    ret->size += tagLength;
+    break;
+  case cipherModeCCM:
+    i = EVP_CIPHER_CTX_ctrl(ctx, EVP_CTRL_CCM_GET_TAG, tagLength, ret->body + ret->size);
+    assert(i==1);
+    ret->size += tagLength;
+    break;
+  }
 
   EVP_CIPHER_CTX_free(ctx);
 
@@ -192,7 +366,7 @@ static void printUsage() {
           "[-r seconds <seconds, default is 3>]\n"
           "[-t threads <threads, default is logic cpu cores>]\n"
           "[-k <key length>, should be 128, 192 or 256, default is 128]\n"
-          "[-c <cipher mode>, should be CBC, CFB, OFB or CTR, default is CBC]\n"
+          "[-c <cipher mode>, should be CBC, CFB, OFB, GCM, CCM or CTR, default is CBC]\n"
           "[-v <verbose json output>] [-f <formated json output>]\n"
           "-u size <use random data block, size can use K, M, G>|file|url\n");
 }
@@ -273,53 +447,21 @@ int main(int argc, char **argv) {
   }
 
   if (mode[0] == '\0' || strcmp(mode, "CBC") == 0) {
-    switch (keyLength) {
-    case keyLength128Bit:
-      cipherMode = cipherMode128CBC;
-      break;
-    case keyLength192Bit:
-      cipherMode = cipherMode192CBC;
-      break;
-    case keyLength256Bit:
-      cipherMode = cipherMode256CBC;
-      break;
-    }
+    cipherMode = cipherModeCBC;
   } else if (strcmp(mode, "CFB") == 0) {
-    switch (keyLength) {
-    case keyLength128Bit:
-      cipherMode = cipherMode128CFB;
-      break;
-    case keyLength192Bit:
-      cipherMode = cipherMode192CFB;
-      break;
-    case keyLength256Bit:
-      cipherMode = cipherMode256CFB;
-      break;
-    }
+    cipherMode = cipherModeCFB;
   } else if (strcmp(mode, "OFB") == 0) {
-    switch (keyLength) {
-    case keyLength128Bit:
-      cipherMode = cipherMode128OFB;
-      break;
-    case keyLength192Bit:
-      cipherMode = cipherMode192OFB;
-      break;
-    case keyLength256Bit:
-      cipherMode = cipherMode256OFB;
-      break;
-    }
+    cipherMode = cipherModeOFB;
   } else if (strcmp(mode, "CTR") == 0) {
-    switch (keyLength) {
-    case keyLength128Bit:
-      cipherMode = cipherMode128CTR;
-      break;
-    case keyLength192Bit:
-      cipherMode = cipherMode192CTR;
-      break;
-    case keyLength256Bit:
-      cipherMode = cipherMode256CTR;
-      break;
-    }
+    cipherMode = cipherModeCTR;
+  } else if (strcmp(mode, "GCM") == 0) {
+    cipherMode = cipherModeGCM;
+    ivLength = 12;
+    tagLength = 16;
+  } else if (strcmp(mode, "CCM") == 0) {
+    cipherMode = cipherModeCCM;
+    ivLength = 7;
+    tagLength = 12;
   } else {
     printUsage();
     goto END;
@@ -358,26 +500,7 @@ int main(int argc, char **argv) {
   RESULT *r = testRun(t);
   assert(r);
 
-  cJSON *json = NULL;
-  if (verbose) {
-    json = resultToJSONVerbose(r);
-  } else {
-    json = resultToJSON(r);
-  }
-  assert(json);
-
-  char *jsonString = NULL;
-  if (formated) {
-    jsonString = cJSON_Print(json);
-  } else {
-    jsonString = cJSON_PrintUnformatted(json);
-  }
-  assert(jsonString);
-
-  printf("%s\n", jsonString);
-
-  cJSON_Delete(json);
-  free(jsonString);
+  printResult(r, verbose, formated);
 
   resultDestory(r);
 

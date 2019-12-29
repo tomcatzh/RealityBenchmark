@@ -96,7 +96,8 @@ CONTENTS *getContents(const char *url) {
 
     result->body = (unsigned char *)malloc(result->size );
     assert(result->body);
-    fread(result->body, 1, result->size, f);
+    size_t readSize = fread(result->body, 1, result->size, f);
+    assert(readSize == result->size);
 
     fclose(f);
   } else {
