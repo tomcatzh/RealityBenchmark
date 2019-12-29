@@ -54,3 +54,4 @@ zlib_bench
 aes_bench
 /test_gcm
 /.vscode
+md_bench
