@@ -16,7 +16,10 @@
 const EVP_MD *md;
 
 static CONTENTS* mdContent(const CONTENTS* data) {
-    EVP_MD_CTX ctx;
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
+    EVP_MD_CTX mdctx;
+#endif
+    EVP_MD_CTX *ctx;
     CONTENTS *mdResult = NULL;
     int i = 0;
 
@@ -27,19 +30,28 @@ static CONTENTS* mdContent(const CONTENTS* data) {
 
     unsigned int md_len;
 
-    EVP_MD_CTX_init(&ctx);
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
+    EVP_MD_CTX_init(&mdctx);
+    ctx = &mdctx;
+#elif
+    ctx = EVP_MD_CTX_new();
+#endif
 
-    i = EVP_DigestInit_ex(&ctx, md, NULL);
+    i = EVP_DigestInit_ex(ctx, md, NULL);
     assert(i==1);
 
-    i = EVP_DigestUpdate(&ctx, data->body, data->size);
+    i = EVP_DigestUpdate(ctx, data->body, data->size);
     assert(i==1);
 
-    i = EVP_DigestFinal_ex(&ctx, mdResult->body, &md_len);
+    i = EVP_DigestFinal_ex(ctx, mdResult->body, &md_len);
     assert(i==1);
     mdResult->size = md_len;
 
-    EVP_MD_CTX_cleanup(&ctx);
+#if OPENSSL_VERSION_NUMBER < 0x010100000L
+    EVP_MD_CTX_cleanup(&mdctx);
+#elif
+    EVP_MD_CTX_free(ctx);
+#endif
 
     return mdResult;
 }
